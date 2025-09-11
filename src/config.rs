@@ -15,7 +15,7 @@ impl Config {
     pub fn default() -> Self {
         Self {
             tick_rate: Duration::from_millis(250),
-            scan_window_secs: 5,
+            scan_window_secs: 10,
             debug_window_secs: 10,
             refresh_interval: Duration::from_millis(1000),
             rating_poll_interval: Duration::from_secs(60),
