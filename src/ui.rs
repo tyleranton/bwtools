@@ -5,13 +5,13 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::{App, View};
 
-pub fn render(frame: &mut ratatui::Frame, app: &App) {
+pub fn render(frame: &mut ratatui::Frame, app: &mut App) {
     let size = frame.area();
 
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(5),
+            Constraint::Length(4),
             Constraint::Min(0),
             Constraint::Length(3),
         ])
@@ -44,59 +44,109 @@ pub fn render(frame: &mut ratatui::Frame, app: &App) {
         _ => None,
     };
 
+
     let mut status_lines = vec![Line::from(Span::styled(status_label, status_style))];
     if !status_detail.is_empty() {
         status_lines.push(Line::from(status_detail));
     }
     if let Some(self_line) = self_line_opt { status_lines.push(self_line); }
 
+    let status_block = Block::default()
+        .borders(Borders::ALL)
+        .title(Span::styled(
+            "Status",
+            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+        ));
     let status = Paragraph::new(status_lines)
-    .alignment(Alignment::Left)
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(Span::styled(
-                "Status",
-                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
-            )),
-    );
+        .alignment(Alignment::Left)
+        .block(status_block);
+    // No clickable opponent in status line
+    app.status_opponent_rect = None;
     frame.render_widget(status, layout[0]);
 
-    let profile_line_opt = match (&app.profile_name, app.gateway) {
-        (Some(name), Some(gw)) => Some(format!("Opponent: {}  •  {}", name, crate::api::gateway_label(gw))),
-        (Some(name), None) => Some(format!("Opponent: {}", name)),
-        _ => None,
-    };
 
     match app.view {
         View::Main => {
-            let mut lines: Vec<Line> = vec![Line::from(Span::raw("Press 'q' or Esc to quit."))];
-            if let Some(text) = profile_line_opt {
-                lines.push(Line::from(Span::raw("")));
-                lines.push(Line::from(Span::raw(text)));
-                if !app.opponent_toons.is_empty() {
-                    lines.push(Line::from(Span::raw("")));
-                    lines.push(Line::from(Span::styled(
-                        "Opponent toons:",
-                        Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
-                    )));
-                    for item in app.opponent_toons.iter().take(20) {
-                        lines.push(Line::from(Span::raw(item.clone())));
-                    }
+            // Split main area: header/help (3) + opponent toons list (rest)
+            let main_area = layout[1];
+            let sub = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Length(3), Constraint::Min(0)])
+                .split(main_area);
+
+            let header = Paragraph::new(vec![
+                Line::from(Span::raw("Ctrl+S Search  •  Ctrl+D Debug  •  Ctrl+Q/Esc Quit")),
+            ])
+                .alignment(Alignment::Left)
+            .block(Block::default().borders(Borders::ALL).title(Span::styled(
+                "Main",
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            )));
+            frame.render_widget(header, sub[0]);
+
+            let mut list_lines: Vec<Line> = Vec::new();
+            if app.opponent_toons.is_empty() {
+                list_lines.push(Line::from(Span::styled(
+                    "No opponent toons yet.",
+                    Style::default().fg(Color::DarkGray),
+                )));
+            } else {
+                for item in app.opponent_toons.iter().take(30) {
+                    list_lines.push(Line::from(Span::raw(item.clone())));
                 }
             }
-            let panel = Paragraph::new(lines)
+            let list_block = Block::default().borders(Borders::ALL).title(Span::styled(
+                "Opponent Info",
+                Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+            ));
+            let list_inner = list_block.inner(sub[1]);
+            // Build opponent info lines: highlight detected opponent first, then other toons
+            let mut list_lines: Vec<Line> = Vec::new();
+            if let (Some(name), Some(gw)) = (&app.profile_name, app.gateway) {
+                let rating = app
+                    .opponent_toons_data
+                    .iter()
+                    .find(|(t, _, _)| t.eq_ignore_ascii_case(name))
+                    .map(|(_, _, r)| *r);
+                let head = match rating {
+                    Some(r) => format!("{} • {} • Rating {}", name, crate::api::gateway_label(gw), r),
+                    None => format!("{} • {}", name, crate::api::gateway_label(gw)),
+                };
+                list_lines.push(Line::from(Span::styled(head, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))));
+                for (toon, gw2, r) in app
+                    .opponent_toons_data
+                    .iter()
+                    .filter(|(t, _, _)| !t.eq_ignore_ascii_case(name))
+                {
+                    list_lines.push(Line::from(Span::raw(format!(
+                        "{} • {} • Rating {}",
+                        toon,
+                        crate::api::gateway_label(*gw2),
+                        r
+                    ))));
+                }
+            } else if app.opponent_toons_data.is_empty() {
+                list_lines.push(Line::from(Span::styled(
+                    "No opponent info yet.",
+                    Style::default().fg(Color::DarkGray),
+                )));
+            } else {
+                for (toon, gw2, r) in app.opponent_toons_data.iter() {
+                    list_lines.push(Line::from(Span::raw(format!(
+                        "{} • {} • Rating {}",
+                        toon,
+                        crate::api::gateway_label(*gw2),
+                        r
+                    ))));
+                }
+            }
+
+            let list_panel = Paragraph::new(list_lines)
                 .wrap(Wrap { trim: true })
                 .alignment(Alignment::Left)
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title(Span::styled(
-                            "Main",
-                            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
-                        )),
-                );
-            frame.render_widget(panel, layout[1]);
+                .block(list_block);
+            app.main_opponent_toons_rect = Some(list_inner);
+            frame.render_widget(list_panel, sub[1]);
         }
         View::Debug => {
             let middle = layout[1];
@@ -140,6 +190,98 @@ pub fn render(frame: &mut ratatui::Frame, app: &App) {
                         )),
                 );
             frame.render_widget(recent, sub[1]);
+        }
+        View::Search => {
+            let area = layout[1];
+            // Input panel + body panels (give input enough height for all fields)
+            let rows = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Length(7), Constraint::Min(0)])
+                .split(area);
+
+            let gw_label = crate::api::gateway_label(app.search_gateway);
+            let name_style = if app.search_focus_gateway { Style::default() } else { Style::default().add_modifier(Modifier::BOLD) };
+            let gw_style = if app.search_focus_gateway { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() };
+            let name_prefix = if app.search_focus_gateway { "  " } else { "→ " };
+            let gw_prefix = if app.search_focus_gateway { "→ " } else { "  " };
+            let input_block = Block::default().borders(Borders::ALL).title(Span::styled(
+                "Search Input",
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            ));
+            let input_inner = input_block.inner(rows[0]);
+            let input = Paragraph::new(vec![
+                Line::from(Span::raw("Type name • Tab focus • ←/→ gateway • Enter search • Ctrl+M Main")),
+                Line::from(Span::raw("")),
+                Line::from(vec![Span::raw(name_prefix), Span::styled("Name: ", Style::default()), Span::styled(app.search_name.clone(), name_style)]),
+                Line::from(vec![Span::raw(gw_prefix), Span::styled("Gateway: ", Style::default()), Span::styled(format!("{} ({})", gw_label, app.search_gateway), gw_style)]),
+            ])
+            .alignment(Alignment::Left)
+            .block(input_block);
+            frame.render_widget(input, rows[0]);
+            if !app.search_focus_gateway {
+                // Place terminal cursor at current edit position (hardware blink if supported)
+                let prefix_cols = 2u16; // "→ " or two spaces
+                let label_cols = "Name: ".len() as u16;
+                let name_cols = app.search_cursor.min(app.search_name.chars().count()) as u16;
+                let mut x = input_inner.x.saturating_add(prefix_cols).saturating_add(label_cols).saturating_add(name_cols);
+                let max_x = input_inner.x.saturating_add(input_inner.width.saturating_sub(1));
+                if x > max_x { x = max_x; }
+                let y = input_inner.y.saturating_add(2);
+                frame.set_cursor_position((x, y));
+            }
+
+            // Body split: other toons (top) and recent matches (bottom)
+            let body = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Length(3), Constraint::Length(6), Constraint::Min(0)])
+                .split(rows[1]);
+
+            // Profile summary: rating if present
+            let mut prof_lines: Vec<Line> = Vec::new();
+            let rate_text = app.search_rating.map(|r| format!("Rating: {}", r)).unwrap_or_else(|| "Rating: N/A".to_string());
+            prof_lines.push(Line::from(Span::raw(rate_text)));
+            if let Some(err) = &app.search_error { prof_lines.push(Line::from(Span::styled(format!("Error: {}", err), Style::default().fg(Color::Red)))); }
+            let profile_panel = Paragraph::new(prof_lines)
+                .alignment(Alignment::Left)
+                .block(Block::default().borders(Borders::ALL).title(Span::styled(
+                    "Profile",
+                    Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                )));
+            frame.render_widget(profile_panel, body[0]);
+
+            let mut others: Vec<Line> = Vec::new();
+            if app.search_other_toons.is_empty() {
+                others.push(Line::from(Span::styled("No other toons.", Style::default().fg(Color::DarkGray))));
+            } else {
+                for item in app.search_other_toons.iter().take(6) { others.push(Line::from(Span::raw(item.clone()))); }
+            }
+            let others_block = Block::default().borders(Borders::ALL).title(Span::styled(
+                "Other Toons",
+                Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+            ));
+            let others_inner = others_block.inner(body[1]);
+            let others_panel = Paragraph::new(others)
+                .wrap(Wrap { trim: true })
+                .alignment(Alignment::Left)
+                .block(others_block);
+            app.search_other_toons_rect = Some(others_inner);
+            frame.render_widget(others_panel, body[1]);
+
+            let mut matches: Vec<Line> = Vec::new();
+            if app.search_matches.is_empty() {
+                matches.push(Line::from(Span::styled("No recent matches.", Style::default().fg(Color::DarkGray))));
+            } else {
+                for m in app.search_matches.iter().take(30) { matches.push(Line::from(Span::raw(m.clone()))); }
+            }
+            let matches_panel = Paragraph::new(matches)
+                .wrap(Wrap { trim: true })
+                .scroll((app.search_matches_scroll, 0))
+                .alignment(Alignment::Left)
+                .block(Block::default().borders(Borders::ALL).title(Span::styled(
+                    "Recent Matches",
+                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                )));
+            frame.render_widget(matches_panel, body[2]);
         }
     }
 
