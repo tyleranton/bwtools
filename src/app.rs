@@ -1,6 +1,7 @@
 use crate::api::ApiHandle;
 use std::time::Instant;
 use std::collections::HashSet;
+use ratatui::layout::Rect;
 
 pub enum View {
     Main,
@@ -25,6 +26,7 @@ pub struct App {
     pub last_profile_text: Option<String>,
     pub debug_scroll: u16,
     pub opponent_toons: Vec<String>,
+    pub opponent_toons_data: Vec<(String, u16, u32)>,
     pub last_opponent_identity: Option<(String, u16)>,
     pub own_profiles: HashSet<String>,
     pub last_rating_poll: Option<Instant>,
@@ -35,8 +37,15 @@ pub struct App {
     pub search_in_progress: bool,
     pub search_rating: Option<u32>,
     pub search_other_toons: Vec<String>,
+    pub search_other_toons_data: Vec<(String, u16, u32)>,
     pub search_matches: Vec<String>,
     pub search_error: Option<String>,
+    pub search_matches_scroll: u16,
+    pub search_cursor: usize,
+    // Clickable regions
+    pub status_opponent_rect: Option<Rect>,
+    pub main_opponent_toons_rect: Option<Rect>,
+    pub search_other_toons_rect: Option<Rect>,
 }
 
 impl App {
@@ -58,6 +67,7 @@ impl App {
             last_profile_text: None,
             debug_scroll: 0,
             opponent_toons: Vec::new(),
+            opponent_toons_data: Vec::new(),
             last_opponent_identity: None,
             own_profiles: HashSet::new(),
             last_rating_poll: None,
@@ -67,8 +77,14 @@ impl App {
             search_in_progress: false,
             search_rating: None,
             search_other_toons: Vec::new(),
+            search_other_toons_data: Vec::new(),
             search_matches: Vec::new(),
             search_error: None,
+            search_matches_scroll: 0,
+            search_cursor: 0,
+            status_opponent_rect: None,
+            main_opponent_toons_rect: None,
+            search_other_toons_rect: None,
         }
     }
 
@@ -80,46 +96,81 @@ impl App {
                     self.search_focus_gateway = !self.search_focus_gateway;
                 }
                 crossterm::event::KeyCode::Left => {
-                    if self.search_focus_gateway {
-                        let gw = self.search_gateway;
-                        self.search_gateway = match gw { 11 => 10, 20 => 11, 30 => 20, 45 => 30, _ => 45 };
-                    }
+                    if self.search_focus_gateway { self.gateway_prev(); }
+                    else if self.search_cursor > 0 { self.search_cursor -= 1; }
                 }
                 crossterm::event::KeyCode::Right => {
-                    if self.search_focus_gateway {
-                        let gw = self.search_gateway;
-                        self.search_gateway = match gw { 10 => 11, 11 => 20, 20 => 30, 30 => 45, _ => 10 };
+                    if self.search_focus_gateway { self.gateway_next(); }
+                    else {
+                        let len = self.search_name.chars().count();
+                        if self.search_cursor < len { self.search_cursor += 1; }
                     }
                 }
                 crossterm::event::KeyCode::Backspace => {
-                    if !self.search_focus_gateway { self.search_name.pop(); }
+                    if !self.search_focus_gateway {
+                        if self.search_cursor > 0 {
+                            let before: String = self.search_name.chars().take(self.search_cursor - 1).collect();
+                            let after: String = self.search_name.chars().skip(self.search_cursor).collect();
+                            self.search_name = before + &after;
+                            self.search_cursor -= 1;
+                            self.clamp_search_cursor();
+                        }
+                    }
                 }
                 crossterm::event::KeyCode::Enter => {
                     self.search_in_progress = true;
                     self.search_error = None;
+                    self.search_matches_scroll = 0;
+                }
+                crossterm::event::KeyCode::Home => {
+                    if !self.search_focus_gateway { self.search_cursor = 0; }
+                }
+                crossterm::event::KeyCode::End => {
+                    if !self.search_focus_gateway { self.search_cursor = self.search_name.chars().count(); }
+                }
+                crossterm::event::KeyCode::Delete => {
+                    if !self.search_focus_gateway {
+                        let len = self.search_name.chars().count();
+                        if self.search_cursor < len {
+                            let before: String = self.search_name.chars().take(self.search_cursor).collect();
+                            let after: String = self.search_name.chars().skip(self.search_cursor + 1).collect();
+                            self.search_name = before + &after;
+                        }
+                    }
                 }
                 crossterm::event::KeyCode::Char(c) => {
-                    if !self.search_focus_gateway { self.search_name.push(c); }
+                    if !self.search_focus_gateway {
+                        let len = self.search_name.chars().count();
+                        if self.search_cursor >= len {
+                            self.search_name.push(c);
+                        } else {
+                            let before: String = self.search_name.chars().take(self.search_cursor).collect();
+                            let after: String = self.search_name.chars().skip(self.search_cursor).collect();
+                            self.search_name = before + &c.to_string() + &after;
+                        }
+                        self.search_cursor += 1;
+                    }
                 }
+                crossterm::event::KeyCode::Up => {
+                    self.search_matches_scroll = self.search_matches_scroll.saturating_sub(1);
+                }
+                crossterm::event::KeyCode::Down => {
+                    self.search_matches_scroll = self.search_matches_scroll.saturating_add(1);
+                }
+                crossterm::event::KeyCode::PageUp => {
+                    self.search_matches_scroll = self.search_matches_scroll.saturating_sub(10);
+                }
+                crossterm::event::KeyCode::PageDown => {
+                    self.search_matches_scroll = self.search_matches_scroll.saturating_add(10);
+                }
+                // Note: Home/End handled for name editing above; matches panel scroll uses Up/Down/Page keys
                 _ => {}
             }
             return;
         }
 
         match code {
-            crossterm::event::KeyCode::Char('d') => {
-                self.view = match self.view {
-                    View::Main => View::Debug,
-                    View::Debug => View::Main,
-                    View::Search => View::Debug,
-                };
-                if matches!(self.view, View::Debug) {
-                    self.debug_scroll = 0;
-                }
-            }
-            crossterm::event::KeyCode::Char('s') => {
-                self.view = View::Search;
-            }
+            // Note: Global view hotkeys are handled in main (Ctrl+D/S/M)
             crossterm::event::KeyCode::Up => {
                 if matches!(self.view, View::Debug) {
                     self.debug_scroll = self.debug_scroll.saturating_sub(1);
@@ -168,5 +219,16 @@ impl App {
 impl App {
     pub fn is_ready(&self) -> bool {
         self.port.is_some() && self.self_profile_name.is_some()
+    }
+
+    pub fn gateway_next(&mut self) {
+        self.search_gateway = match self.search_gateway { 10 => 11, 11 => 20, 20 => 30, 30 => 45, _ => 10 };
+    }
+    pub fn gateway_prev(&mut self) {
+        self.search_gateway = match self.search_gateway { 11 => 10, 20 => 11, 30 => 20, 45 => 30, _ => 45 };
+    }
+    pub fn clamp_search_cursor(&mut self) {
+        let len = self.search_name.chars().count();
+        if self.search_cursor > len { self.search_cursor = len; }
     }
 }

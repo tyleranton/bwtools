@@ -1,7 +1,7 @@
 use std::io;
 use std::time::{Duration, Instant};
 
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 
@@ -45,13 +45,141 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
             .unwrap_or_else(|| Duration::from_secs(0));
 
         if event::poll(timeout)? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    match key.code {
-                        KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
-                        other => app.on_key(other),
+            match event::read()? {
+                Event::Key(key) => {
+                    if key.kind == KeyEventKind::Press {
+                        if key.modifiers.contains(KeyModifiers::CONTROL) {
+                            match key.code {
+                                KeyCode::Char('d') => {
+                                    app.view = match app.view {
+                                        crate::app::View::Debug => crate::app::View::Main,
+                                        _ => crate::app::View::Debug,
+                                    };
+                                    if matches!(app.view, crate::app::View::Debug) {
+                                        app.debug_scroll = 0;
+                                    }
+                                }
+                                KeyCode::Char('s') => {
+                                    app.view = crate::app::View::Search;
+                                    app.search_focus_gateway = false;
+                                    app.search_cursor = app.search_name.chars().count();
+                                }
+                                KeyCode::Char('m') => { app.view = crate::app::View::Main; }
+                                KeyCode::Char('q') => { app.should_quit = true; }
+                                _ => {}
+                            }
+                        } else {
+                            match key.code {
+                                KeyCode::Esc => app.should_quit = true,
+                                other => app.on_key(other),
+                            }
+                        }
                     }
                 }
+                Event::Mouse(me) => {
+                    use crossterm::event::{MouseEventKind, MouseButton};
+                    if let MouseEventKind::Down(MouseButton::Left) = me.kind {
+                        let x = me.column;
+                        let y = me.row;
+                        match app.view {
+                            crate::app::View::Main => {
+                                if let Some(rect) = app.status_opponent_rect {
+                                    if x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height {
+                                        if let (Some(name), Some(gw)) = (&app.profile_name, app.gateway) {
+                                            app.view = crate::app::View::Search;
+                                            app.search_name = name.clone();
+                                            app.search_gateway = gw;
+                                            app.search_focus_gateway = false;
+                                            app.search_cursor = app.search_name.chars().count();
+                                            app.search_matches_scroll = 0;
+                                            app.search_in_progress = true;
+                                        }
+                                    }
+                                }
+                                if let Some(rect) = app.main_opponent_toons_rect {
+                                    if x >= rect.x && y >= rect.y && y < rect.y + rect.height {
+                                        let idx = (y - rect.y) as usize;
+                                        // idx 0: header (opponent); others: filtered list
+                                        if idx == 0 {
+                                            if let (Some(name), Some(gw)) = (&app.profile_name, app.gateway) {
+                                                let rating = app
+                                                    .opponent_toons_data
+                                                    .iter()
+                                                    .find(|(t, _, _)| t.eq_ignore_ascii_case(name))
+                                                    .map(|(_, _, r)| *r);
+                                                let head_text = match rating {
+                                                    Some(r) => format!("{} • {} • Rating {}", name, crate::api::gateway_label(gw), r),
+                                                    None => format!("{} • {}", name, crate::api::gateway_label(gw)),
+                                                };
+                                                let head_width = head_text.chars().count() as u16;
+                                                if x < rect.x + head_width {
+                                                    app.view = crate::app::View::Search;
+                                                    app.search_name = name.clone();
+                                                    app.search_gateway = gw;
+                                                    app.search_focus_gateway = false;
+                                                    app.search_cursor = app.search_name.chars().count();
+                                                    app.search_matches_scroll = 0;
+                                                    app.search_in_progress = true;
+                                                }
+                                            }
+                                        } else {
+                                            // Build filtered others to match UI order
+                                            let others: Vec<(String, u16, u32)> = app
+                                                .opponent_toons_data
+                                                .iter()
+                                                .filter(|(t, _, _)|
+                                                    app.profile_name.as_ref().map(|n| !t.eq_ignore_ascii_case(n)).unwrap_or(true)
+                                                )
+                                                .cloned()
+                                                .collect();
+                                            let sel = idx - 1;
+                                            if sel < others.len() {
+                                                let display_text = format!(
+                                                    "{} • {} • Rating {}",
+                                                    others[sel].0,
+                                                    crate::api::gateway_label(others[sel].1),
+                                                    others[sel].2
+                                                );
+                                                let text_width = display_text.chars().count() as u16;
+                                                if x < rect.x + text_width {
+                                                    let (toon, gw, _r) = others[sel].clone();
+                                                    app.view = crate::app::View::Search;
+                                                    app.search_name = toon;
+                                                    app.search_gateway = gw;
+                                                    app.search_focus_gateway = false;
+                                                    app.search_cursor = app.search_name.chars().count();
+                                                    app.search_matches_scroll = 0;
+                                                    app.search_in_progress = true;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            crate::app::View::Search => {
+                                if let Some(rect) = app.search_other_toons_rect {
+                                    if x >= rect.x && y >= rect.y && y < rect.y + rect.height {
+                                        let idx = (y - rect.y) as usize;
+                                        if idx < app.search_other_toons_data.len() {
+                                            let text_width = app.search_other_toons.get(idx).map(|s| s.chars().count() as u16).unwrap_or(0);
+                                            if x < rect.x + text_width {
+                                                let (toon, gw, _r) = app.search_other_toons_data[idx].clone();
+                                                app.search_name = toon;
+                                                app.search_gateway = gw;
+                                                app.search_focus_gateway = false;
+                                                app.search_cursor = app.search_name.chars().count();
+                                                app.search_matches_scroll = 0;
+                                                app.search_in_progress = true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            crate::app::View::Debug => {}
+                        }
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -114,10 +242,11 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                     let identity = (opp_name.clone(), opp_gw);
                                     if app.last_opponent_identity.as_ref() != Some(&identity) {
                                         if let Ok(list) = api.opponent_toons_summary(opp_name, opp_gw) {
-                                            app.opponent_toons = list
-                                                .into_iter()
-                                                .map(|(toon, gw_num, rating)| format!("{} • {} • Rating {}", toon, crate::api::gateway_label(gw_num), rating))
-                                                .collect();
+                                        app.opponent_toons_data = list.clone();
+                                        app.opponent_toons = list
+                                            .into_iter()
+                                            .map(|(toon, gw_num, rating)| format!("{} • {} • Rating {}", toon, crate::api::gateway_label(gw_num), rating))
+                                            .collect();
                                             app.last_opponent_identity = Some(identity);
                                         }
                                     }
@@ -165,20 +294,46 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                     app.search_rating = None;
                     app.search_other_toons.clear();
                     app.search_matches.clear();
+                    app.search_matches_scroll = 0;
                     if let (Some(api), true) = (&app.api, !app.search_name.trim().is_empty()) {
                         let name = app.search_name.trim().to_string();
                         let gw = app.search_gateway;
                         match api.get_toon_info(&name, gw) {
                             Ok(info) => {
-                                let guid = info.profiles.iter().find(|p| p.toon == name).map(|p| p.toon_guid);
+                                let season = info.matchmaked_current_season;
+                                let guid = info
+                                    .profiles
+                                    .iter()
+                                    .find(|p| p.toon.eq_ignore_ascii_case(&name))
+                                    .map(|p| p.toon_guid)
+                                    .or_else(|| info
+                                        .matchmaked_stats
+                                        .iter()
+                                        .find(|s| s.season_id == season && s.toon.eq_ignore_ascii_case(&name))
+                                        .map(|s| s.toon_guid)
+                                    );
                                 app.search_rating = guid.and_then(|g| api.compute_rating_for_guid(&info, g));
-                                app.search_other_toons = api.other_toons_with_ratings(&info, &name)
+                                let others = api.other_toons_with_ratings(&info, &name);
+                                app.search_other_toons_data = others.clone();
+                                app.search_other_toons = others
                                     .into_iter()
                                     .map(|(toon, gw_num, rating)| format!("{} • {} • Rating {}", toon, crate::api::gateway_label(gw_num), rating))
                                     .collect();
-                                match api.get_scr_profile(&name, gw) {
-                                    Ok(profile) => { app.search_matches = api.match_summaries(&profile, &name); }
-                                    Err(e) => { app.search_error = Some(format!("profile error: {}", e)); }
+                                // Only show matches if current season total games across buckets >= 5
+                                let eligible = guid.map(|g| {
+                                    let season = info.matchmaked_current_season;
+                                    info.matchmaked_stats
+                                        .iter()
+                                        .filter(|s| s.toon_guid == g && s.season_id == season)
+                                        .fold(0u32, |acc, s| acc.saturating_add(s.wins + s.losses))
+                                }).map(|n| n >= 5).unwrap_or(false);
+                                if eligible {
+                                    match api.get_scr_profile(&name, gw) {
+                                        Ok(profile) => { app.search_matches = api.match_summaries(&profile, &name); }
+                                        Err(e) => { app.search_error = Some(format!("profile error: {}", e)); }
+                                    }
+                                } else {
+                                    app.search_matches.clear();
                                 }
                             }
                             Err(e) => { app.search_error = Some(e.to_string()); }
