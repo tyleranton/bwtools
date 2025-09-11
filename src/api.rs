@@ -17,8 +17,6 @@ impl ApiHandle {
         Ok(Self { client, rt })
     }
 
-    // Placeholder for future: add additional typed calls as needed
-
     pub fn get_toon_info(&self, name: &str, gw_num: u16) -> Result<ScrToonInfo> {
         let gw = map_gateway(gw_num).ok_or_else(|| anyhow!("Unknown gateway: {}", gw_num))?;
         let fut = self.client.get_aurora_profile_by_toon_toon_info(name.to_string(), gw);
@@ -33,12 +31,9 @@ impl ApiHandle {
         Ok(data)
     }
 
-    // Summarize opponent toons with gateway and rating.
-    // Returns Vec of (toon, gateway_num, rating)
     pub fn opponent_toons_summary(&self, name: &str, gw_num: u16) -> Result<Vec<(String, u16, u32)>> {
         let data = self.get_mm_game_loading(name, gw_num)?;
 
-        // Build a reverse map from (toon, toon_guid) -> gateway number
         let mut guid_to_gateway: std::collections::HashMap<u32, u16> = std::collections::HashMap::new();
         for (gw_str, mapping) in data.toon_guid_by_gateway.iter() {
             if let Ok(gw) = gw_str.parse::<u16>() {
@@ -48,7 +43,6 @@ impl ApiHandle {
             }
         }
 
-        // For each matchmaked_stats entry, pick highest rating per toon_guid
         let mut by_guid: std::collections::HashMap<u32, (String, u16, u32)> = std::collections::HashMap::new();
         for s in data.matchmaked_stats.iter() {
             let gw = guid_to_gateway.get(&s.toon_guid).copied().unwrap_or(0);
@@ -58,14 +52,11 @@ impl ApiHandle {
             }
         }
 
-        // Collect to vector and sort by rating desc
         let mut out: Vec<(String, u16, u32)> = by_guid.into_values().collect();
         out.sort_by(|a, b| b.2.cmp(&a.2));
         Ok(out)
     }
 }
-
-// SCR numeric gateway -> API enum mapping
 pub fn map_gateway(num: u16) -> Option<Gateway> {
     match num {
         10 => Some(Gateway::USWest),
@@ -77,7 +68,6 @@ pub fn map_gateway(num: u16) -> Option<Gateway> {
     }
 }
 
-// Human-friendly label for gateway number
 pub fn gateway_label(num: u16) -> &'static str {
     match num {
         10 => "US West",

@@ -25,7 +25,6 @@ impl Config {
 }
 
 fn default_cache_dir() -> PathBuf {
-    // If running on Windows, use USERPROFILE path directly.
     if cfg!(target_os = "windows") {
         let home = env::var("USERPROFILE").unwrap_or_else(|_| String::from("."));
         return PathBuf::from(home)
@@ -35,7 +34,6 @@ fn default_cache_dir() -> PathBuf {
             .join("blizzard_browser_cache");
     }
 
-    // Non-Windows: assume Wine-based path under HOME
     let home = env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("~"));
     let user = env::var("USER").unwrap_or_else(|_| "default".to_string());
     home.join(".wine-battlenet/drive_c/users")

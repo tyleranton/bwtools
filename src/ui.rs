@@ -11,18 +11,17 @@ pub fn render(frame: &mut ratatui::Frame, app: &App) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(5),   // status
-            Constraint::Min(0),      // main/debug
-            Constraint::Length(3),   // footer
+            Constraint::Length(5),
+            Constraint::Min(0),
+            Constraint::Length(3),
         ])
         .split(size);
 
-    // Status panel
     let (status_label, status_style, status_detail) = match app.port {
         Some(_) => (
             "Connected".to_string(),
             Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
-            String::new(), // omit port line
+            String::new(),
         ),
         None => (
             "Waiting for port...".to_string(),
@@ -100,7 +99,6 @@ pub fn render(frame: &mut ratatui::Frame, app: &App) {
             frame.render_widget(panel, layout[1]);
         }
         View::Debug => {
-            // Split middle area for response (scrollable) and recent list
             let middle = layout[1];
             let sub = Layout::default()
                 .direction(Direction::Vertical)

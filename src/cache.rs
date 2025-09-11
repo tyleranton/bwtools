@@ -11,7 +11,6 @@ fn extract_port(url: &str) -> Option<u16> {
 
 fn parse_profile_from_url_mmgameloading(url: &str) -> Option<(String, u16)> {
     let parsed = Url::parse(url).ok()?;
-    // Check request_flags contains scr_mmgameloading
     let has_flag = parsed
         .query_pairs()
         .any(|(k, v)| k == "request_flags" && v.as_ref().contains("scr_mmgameloading"));
@@ -20,10 +19,9 @@ fn parse_profile_from_url_mmgameloading(url: &str) -> Option<(String, u16)> {
     }
 
     let mut segments = parsed.path_segments()?;
-    // Expect: /web-api/v2/aurora-profile-by-toon/{profile}/{gateway}/
-    let s1 = segments.next()?; // web-api
-    let s2 = segments.next()?; // v2
-    let s3 = segments.next()?; // aurora-profile-by-toon
+    let s1 = segments.next()?;
+    let s2 = segments.next()?;
+    let s3 = segments.next()?;
     if s1 != "web-api" || s2 != "v2" || s3 != "aurora-profile-by-toon" {
         return None;
     }
@@ -36,9 +34,9 @@ fn parse_profile_from_url_mmgameloading(url: &str) -> Option<(String, u16)> {
 fn parse_profile_from_url_path(url: &str) -> Option<(String, u16)> {
     let parsed = Url::parse(url).ok()?;
     let mut segments = parsed.path_segments()?;
-    let s1 = segments.next()?; // web-api
-    let s2 = segments.next()?; // v2
-    let s3 = segments.next()?; // aurora-profile-by-toon
+    let s1 = segments.next()?;
+    let s2 = segments.next()?;
+    let s3 = segments.next()?;
     if s1 != "web-api" || s2 != "v2" || s3 != "aurora-profile-by-toon" {
         return None;
     }
@@ -97,7 +95,6 @@ impl CacheReader {
             .filter_map(|e| {
                 let entry = e.get().ok()?;
                 let key = entry.key.to_string();
-                // quick contains filter first
                 if !(key.contains("/web-api/v2/aurora-profile-by-toon/") && key.contains("scr_mmgameloading")) {
                     return None;
                 }
@@ -161,8 +158,6 @@ impl CacheReader {
         Ok(latest)
     }
 
-    // Debug helpers
-
     pub fn recent_keys(&self, window_secs: i64, max: usize) -> Result<Vec<(String, i64)>> {
         let now = Utc::now();
         let entries = self.cache.entries().context("Failed to read cache entries")?;
@@ -170,7 +165,6 @@ impl CacheReader {
             .filter_map(|e| {
                 let entry = e.get().ok()?;
                 let key = entry.key.to_string();
-                // Only include web-api endpoints for debug visibility
                 if !key.contains("/web-api/") {
                     return None;
                 }
@@ -183,7 +177,6 @@ impl CacheReader {
                 }
             })
             .collect();
-        // sort by newest first
         items.sort_by_key(|(_, _, ct)| *ct);
         items.reverse();
         Ok(items
