@@ -20,11 +20,12 @@ use crate::ui::render;
 
 fn compute_self_rating(info: &bw_web_api_rs::models::aurora_profile::ScrToonInfo, profile_name: &str) -> Option<u32> {
     let toon_guid = info.profiles.iter().find(|p| p.toon == profile_name).map(|p| p.toon_guid)?;
-    info.matchmaked_stats
-        .iter()
-        .filter(|s| s.toon_guid == toon_guid)
-        .max_by_key(|s| s.rating)
-        .map(|s| s.rating)
+    let season = info.matchmaked_current_season;
+    let iter = info.matchmaked_stats.iter().filter(|s| s.toon_guid == toon_guid);
+    if let Some(r) = iter.clone().filter(|s| s.season_id == season).max_by_key(|s| s.rating).map(|s| s.rating) {
+        return Some(r);
+    }
+    iter.max_by_key(|s| s.rating).map(|s| s.rating)
 }
 
 fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> io::Result<()> {
@@ -76,13 +77,11 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                     }
                 }
 
-                if app.is_ready() {
-                    if let Some(p) = app.port {
-                        if app.api.is_none() || app.last_port_used != Some(p) {
-                            let base_url = format!("http://127.0.0.1:{p}");
-                            app.api = crate::api::ApiHandle::new(base_url).ok();
-                            app.last_port_used = Some(p);
-                        }
+                if let Some(p) = app.port {
+                    if app.api.is_none() || app.last_port_used != Some(p) {
+                        let base_url = format!("http://127.0.0.1:{p}");
+                        app.api = crate::api::ApiHandle::new(base_url).ok();
+                        app.last_port_used = Some(p);
                     }
                 }
 
@@ -155,6 +154,34 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                 app.last_rating_poll = Some(Instant::now());
                                 app.profile_fetched = true;
                             }
+                        }
+                    }
+                }
+
+                // Search execution (blocking in tick, acceptable for now)
+                if app.search_in_progress {
+                    app.search_in_progress = false;
+                    app.search_error = None;
+                    app.search_rating = None;
+                    app.search_other_toons.clear();
+                    app.search_matches.clear();
+                    if let (Some(api), true) = (&app.api, !app.search_name.trim().is_empty()) {
+                        let name = app.search_name.trim().to_string();
+                        let gw = app.search_gateway;
+                        match api.get_toon_info(&name, gw) {
+                            Ok(info) => {
+                                let guid = info.profiles.iter().find(|p| p.toon == name).map(|p| p.toon_guid);
+                                app.search_rating = guid.and_then(|g| api.compute_rating_for_guid(&info, g));
+                                app.search_other_toons = api.other_toons_with_ratings(&info, &name)
+                                    .into_iter()
+                                    .map(|(toon, gw_num, rating)| format!("{} • {} • Rating {}", toon, crate::api::gateway_label(gw_num), rating))
+                                    .collect();
+                                match api.get_scr_profile(&name, gw) {
+                                    Ok(profile) => { app.search_matches = api.match_summaries(&profile, &name); }
+                                    Err(e) => { app.search_error = Some(format!("profile error: {}", e)); }
+                                }
+                            }
+                            Err(e) => { app.search_error = Some(e.to_string()); }
                         }
                     }
                 }

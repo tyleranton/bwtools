@@ -141,6 +141,53 @@ pub fn render(frame: &mut ratatui::Frame, app: &App) {
                 );
             frame.render_widget(recent, sub[1]);
         }
+        View::Search => {
+            let mut lines: Vec<Line> = Vec::new();
+            lines.push(Line::from(Span::styled("Search", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))));
+            lines.push(Line::from(Span::raw("Type toon name, Tab to switch, Left/Right to change gateway, Enter to search.")));
+            lines.push(Line::from(Span::raw("")));
+            let gw_label = crate::api::gateway_label(app.search_gateway);
+            let name_style = if app.search_focus_gateway { Style::default() } else { Style::default().add_modifier(Modifier::BOLD) };
+            let gw_style = if app.search_focus_gateway { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() };
+            lines.push(Line::from(vec![
+                Span::styled("Name: ", Style::default()),
+                Span::styled(app.search_name.clone(), name_style),
+            ]));
+            lines.push(Line::from(vec![
+                Span::styled("Gateway: ", Style::default()),
+                Span::styled(format!("{} ({})", gw_label, app.search_gateway), gw_style),
+            ]));
+            lines.push(Line::from(Span::raw("")));
+            if let Some(r) = app.search_rating { lines.push(Line::from(Span::raw(format!("Rating: {}", r)))); }
+            if !app.search_other_toons.is_empty() {
+                lines.push(Line::from(Span::styled("Other toons:", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD))));
+                for item in app.search_other_toons.iter().take(20) {
+                    lines.push(Line::from(Span::raw(item.clone())));
+                }
+            }
+            if !app.search_matches.is_empty() {
+                lines.push(Line::from(Span::raw("")));
+                lines.push(Line::from(Span::styled("Recent matches:", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))));
+                for m in app.search_matches.iter().take(20) {
+                    lines.push(Line::from(Span::raw(m.clone())));
+                }
+            }
+            if let Some(err) = &app.search_error {
+                lines.push(Line::from(Span::styled(format!("Error: {}", err), Style::default().fg(Color::Red))));
+            }
+            let panel = Paragraph::new(lines)
+                .wrap(Wrap { trim: true })
+                .alignment(Alignment::Left)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title(Span::styled(
+                            "Search",
+                            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                        )),
+                );
+            frame.render_widget(panel, layout[1]);
+        }
     }
 
     let footer = Paragraph::new(Line::from(vec![

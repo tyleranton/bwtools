@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow};
 use bw_web_api_rs::{ApiClient, ApiConfig, types::Gateway};
-use bw_web_api_rs::models::aurora_profile::{ScrToonInfo, ScrMmGameLoading};
+use bw_web_api_rs::models::aurora_profile::{ScrToonInfo, ScrMmGameLoading, ScrProfile};
 
 pub struct ApiHandle {
     client: ApiClient,
@@ -44,7 +44,8 @@ impl ApiHandle {
         }
 
         let mut by_guid: std::collections::HashMap<u32, (String, u16, u32)> = std::collections::HashMap::new();
-        for s in data.matchmaked_stats.iter() {
+        let season = data.matchmaked_current_season;
+        for s in data.matchmaked_stats.iter().filter(|s| s.season_id == season) {
             let gw = guid_to_gateway.get(&s.toon_guid).copied().unwrap_or(0);
             let entry = by_guid.entry(s.toon_guid).or_insert_with(|| (s.toon.clone(), gw, s.rating));
             if s.rating > entry.2 {
@@ -55,6 +56,81 @@ impl ApiHandle {
         let mut out: Vec<(String, u16, u32)> = by_guid.into_values().collect();
         out.sort_by(|a, b| b.2.cmp(&a.2));
         Ok(out)
+    }
+
+    pub fn get_scr_profile(&self, name: &str, gw_num: u16) -> Result<ScrProfile> {
+        let gw = map_gateway(gw_num).ok_or_else(|| anyhow!("Unknown gateway: {}", gw_num))?;
+        let fut = self.client.get_aurora_profile_by_toon_scr_profile(name.to_string(), gw);
+        let data: ScrProfile = self.rt.block_on(fut)?;
+        Ok(data)
+    }
+
+    pub fn compute_rating_for_guid(&self, info: &ScrToonInfo, target_guid: u32) -> Option<u32> {
+        let season = info.matchmaked_current_season;
+        let iter = info.matchmaked_stats.iter().filter(|s| s.toon_guid == target_guid);
+        if let Some(r) = iter.clone().filter(|s| s.season_id == season).max_by_key(|s| s.rating).map(|s| s.rating) {
+            return Some(r);
+        }
+        iter.max_by_key(|s| s.rating).map(|s| s.rating)
+    }
+
+    pub fn other_toons_with_ratings(&self, info: &ScrToonInfo, main_toon: &str) -> Vec<(String, u16, u32)> {
+        let mut guid_to_gateway: std::collections::HashMap<u32, u16> = std::collections::HashMap::new();
+        for (gw_str, mapping) in info.toon_guid_by_gateway.iter() {
+            if let Ok(gw) = gw_str.parse::<u16>() {
+                for (_toon_name, guid) in mapping.iter() {
+                    guid_to_gateway.insert(*guid, gw);
+                }
+            }
+        }
+        let mut out = Vec::new();
+        for p in info.profiles.iter() {
+            if p.toon == main_toon { continue; }
+            let gw = guid_to_gateway.get(&p.toon_guid).copied().unwrap_or(0);
+            if let Some(r) = self.compute_rating_for_guid(info, p.toon_guid) {
+                out.push((p.toon.clone(), gw, r));
+            }
+        }
+        out.sort_by(|a,b| b.2.cmp(&a.2));
+        out
+    }
+
+    pub fn match_summaries(&self, profile: &ScrProfile, main_toon: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        for g in profile.game_results.iter() {
+            if g.players.len() < 2 { continue; }
+            // Find main player (case-insensitive toon compare)
+            let mut main_idx = None;
+            for (i, pl) in g.players.iter().enumerate() {
+                if pl.toon.eq_ignore_ascii_case(main_toon) { main_idx = Some(i); break; }
+            }
+            let Some(mi) = main_idx else { continue };
+            let main_team = g.players[mi].attributes.team.as_deref();
+            // Prefer an opponent from a different team if team info exists
+            let mut opp_name = None;
+            if let Some(mt) = main_team {
+                opp_name = g.players
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, p)| *i != mi && p.attributes.team.as_deref() != Some(mt))
+                    .map(|(_, p)| p.toon.clone())
+                    .find(|_| true);
+            }
+            // Fallback: any other player
+            if opp_name.is_none() {
+                opp_name = g.players
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| *i != mi)
+                    .map(|(_, p)| p.toon.clone())
+                    .find(|_| true);
+            }
+            let mut opp = opp_name.unwrap_or_else(|| String::from("?"));
+            if opp.trim().is_empty() { opp = String::from("Unknown"); }
+            let result = match g.players[mi].result.to_ascii_lowercase().as_str() { "win" => "Win", "loss" => "Loss", _ => &g.players[mi].result };
+            out.push(format!("{} vs {}", result, opp));
+        }
+        out
     }
 }
 pub fn map_gateway(num: u16) -> Option<Gateway> {
