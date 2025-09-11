@@ -1,0 +1,27 @@
+IDEAS.md
+
+# Rust build
+/target
+**/*.rs.bk
+
+# Nix/Direnv
+/.direnv/
+/result
+/result-*
+
+# Editor/IDE
+/.vscode/
+/.idea/
+*.code-workspace
+*.swp
+*.swo
+*~
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+# keep .envrc tracked intentionally
