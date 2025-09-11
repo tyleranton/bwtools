@@ -48,4 +48,3 @@ A terminal UI tool for StarCraft: Remastered that detects the local web API, ide
 - `src/cache.rs` — Chrome cache scanning and URL parsing
 - `src/api.rs` — `bw-web-api-rs` client wrapper and helpers
 - `src/config.rs` — runtime config (tick rates, windows, cache dir)
-- `IDEAS.md` — future feature ideas
