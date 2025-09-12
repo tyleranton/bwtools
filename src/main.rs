@@ -29,7 +29,7 @@ fn compute_self_rating(info: &bw_web_api_rs::models::aurora_profile::ScrToonInfo
 }
 
 fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> io::Result<()> {
-    let cfg = Config::default();
+    let cfg: Config = Default::default();
     let tick_rate = cfg.tick_rate;
     let mut last_tick = Instant::now();
     let mut last_refresh = Instant::now();
@@ -274,10 +274,11 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                 }
                                 app.last_profile_text = Some(out);
                                 app.self_profile_rating = compute_self_rating(&info, name);
+                                
                                 app.own_profiles = info.profiles.iter().map(|p| p.toon.clone()).collect();
                                 // Fetch profile for stats
                                 if let Ok(profile) = api.get_scr_profile(name, gw) {
-                                    let (mr, lines) = api.profile_stats_last100(&profile, name);
+                                    let (mr, lines, _results) = api.profile_stats_last100(&profile, name);
                                     app.self_main_race = mr;
                                     app.self_matchups = lines;
                                 }
@@ -301,6 +302,8 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                     app.search_other_toons.clear();
                     app.search_matches.clear();
                     app.search_matches_scroll = 0;
+                    app.search_main_race = None;
+                    app.search_matchups.clear();
                     if let (Some(api), true) = (&app.api, !app.search_name.trim().is_empty()) {
                         let name = app.search_name.trim().to_string();
                         let gw = app.search_gateway;
@@ -333,13 +336,16 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                         .filter(|s| s.toon_guid == g && s.season_id == season)
                                         .fold(0u32, |acc, s| acc.saturating_add(s.wins + s.losses))
                                 }).map(|n| n >= 5).unwrap_or(false);
-                                if eligible {
-                                    match api.get_scr_profile(&name, gw) {
-                                        Ok(profile) => { app.search_matches = api.match_summaries(&profile, &name); }
-                                        Err(e) => { app.search_error = Some(format!("profile error: {}", e)); }
+                                match api.get_scr_profile(&name, gw) {
+                                    Ok(profile) => {
+                                        // matches list only if eligible (>=5)
+                                        if eligible { app.search_matches = api.match_summaries(&profile, &name); } else { app.search_matches.clear(); }
+                                        // always compute stats from last 100 (ignore results in Search for now)
+                                        let (mr, lines, _results) = api.profile_stats_last100(&profile, &name);
+                                        app.search_main_race = mr;
+                                        app.search_matchups = lines;
                                     }
-                                } else {
-                                    app.search_matches.clear();
+                                    Err(e) => { app.search_error = Some(format!("profile error: {}", e)); }
                                 }
                             }
                             Err(e) => { app.search_error = Some(e.to_string()); }
@@ -356,7 +362,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                     app.self_profile_rating = compute_self_rating(&info, name);
                                     app.last_rating_poll = Some(Instant::now());
                                     if let Ok(profile) = api.get_scr_profile(name, gw) {
-                                        let (mr, lines) = api.profile_stats_last100(&profile, name);
+                                        let (mr, lines, _results) = api.profile_stats_last100(&profile, name);
                                         app.self_main_race = mr;
                                         app.self_matchups = lines;
                                     }

@@ -149,7 +149,7 @@ impl ApiHandle {
         out
     }
 
-    pub fn profile_stats_last100(&self, profile: &ScrProfile, main_toon: &str) -> (Option<String>, Vec<String>) {
+    pub fn profile_stats_last100(&self, profile: &ScrProfile, main_toon: &str) -> (Option<String>, Vec<String>, Vec<bool>) {
         // Collect 1v1 games with real players and identify main player and opponent with races
         // Sort by create_time desc, then take 100
         let mut games: Vec<(&bw_web_api_rs::models::common::Player, &bw_web_api_rs::models::common::Player, u64)> = Vec::new();
@@ -191,6 +191,11 @@ impl ApiHandle {
                 if res == "win" { entry.0 += 1; }
             }
         }
+        // Build recent results (newest first): win => true, loss => false
+        let mut results: Vec<bool> = Vec::new();
+        for (m, _o, _ts) in games.iter() {
+            results.push(m.result.eq_ignore_ascii_case("win"));
+        }
         // Format lines as XvX with main race initial
         let main_label = |r: &str| match r { "protoss"=>"Protoss", "terran"=>"Terran", "zerg"=>"Zerg", _=>"Unknown" };
         let main_initial = |r: &str| match r { "protoss"=>"P", "terran"=>"T", "zerg"=>"Z", _=>"?" };
@@ -206,7 +211,7 @@ impl ApiHandle {
                 }
             }
         }
-        (main_race.map(|s| main_label(&s).to_string()), lines)
+        (main_race.map(|s| main_label(&s).to_string()), lines, results)
     }
 }
 pub fn map_gateway(num: u16) -> Option<Gateway> {

@@ -11,8 +11,8 @@ pub struct Config {
     pub cache_dir: PathBuf,
 }
 
-impl Config {
-    pub fn default() -> Self {
+impl Default for Config {
+    fn default() -> Self {
         Self {
             tick_rate: Duration::from_millis(250),
             scan_window_secs: 10,

@@ -30,6 +30,7 @@ pub struct App {
     pub last_opponent_identity: Option<(String, u16)>,
     pub own_profiles: HashSet<String>,
     pub last_rating_poll: Option<Instant>,
+    
     // Search view state
     pub search_name: String,
     pub search_gateway: u16,
@@ -42,6 +43,8 @@ pub struct App {
     pub search_error: Option<String>,
     pub search_matches_scroll: u16,
     pub search_cursor: usize,
+    pub search_main_race: Option<String>,
+    pub search_matchups: Vec<String>,
     // Clickable regions
     pub status_opponent_rect: Option<Rect>,
     pub main_opponent_toons_rect: Option<Rect>,
@@ -85,6 +88,8 @@ impl App {
             search_error: None,
             search_matches_scroll: 0,
             search_cursor: 0,
+            search_main_race: None,
+            search_matchups: Vec::new(),
             status_opponent_rect: None,
             main_opponent_toons_rect: None,
             search_other_toons_rect: None,

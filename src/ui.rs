@@ -67,11 +67,11 @@ pub fn render(frame: &mut ratatui::Frame, app: &mut App) {
 
     match app.view {
         View::Main => {
-            // Split main area: header/help (3) + self stats (6) + opponent info (rest)
+            // Split main area: header/help (3) + self stats (7) + opponent info (rest)
             let main_area = layout[1];
             let sub = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints([Constraint::Length(3), Constraint::Length(6), Constraint::Min(0)])
+                .constraints([Constraint::Length(3), Constraint::Length(7), Constraint::Min(0)])
                 .split(main_area);
 
             let header = Paragraph::new(vec![
@@ -84,7 +84,19 @@ pub fn render(frame: &mut ratatui::Frame, app: &mut App) {
             )));
             frame.render_widget(header, sub[0]);
 
-            // Self profile stats panel
+            // Self profile stats panel with results sparkline on the right
+            let stats_block = Block::default().borders(Borders::ALL).title(Span::styled(
+                "Profile Stats",
+                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+            ));
+            let stats_area = sub[1];
+            let stats_inner = stats_block.inner(stats_area);
+            // Split into text + sparkline columns
+            let cols = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(65), Constraint::Min(10)])
+                .split(stats_inner);
+
             let mut stats_lines: Vec<Line> = Vec::new();
             if let Some(ref r) = app.self_main_race {
                 stats_lines.push(Line::from(vec![
@@ -112,13 +124,15 @@ pub fn render(frame: &mut ratatui::Frame, app: &mut App) {
                     }
                 }
             }
-            let stats_panel = Paragraph::new(stats_lines)
-                .alignment(Alignment::Left)
-                .block(Block::default().borders(Borders::ALL).title(Span::styled(
-                    "Profile Stats",
-                    Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
-                )));
-            frame.render_widget(stats_panel, sub[1]);
+            // Render block and left column
+            frame.render_widget(stats_block, stats_area);
+            frame.render_widget(Paragraph::new(stats_lines).alignment(Alignment::Left), cols[0]);
+
+            // No separate trend column; keep right column empty for now
+            frame.render_widget(
+                Paragraph::new(Line::from(Span::raw(""))).alignment(Alignment::Left),
+                cols[1],
+            );
             let list_block = Block::default().borders(Borders::ALL).title(Span::styled(
                 "Opponent Info",
                 Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
@@ -257,13 +271,32 @@ pub fn render(frame: &mut ratatui::Frame, app: &mut App) {
             // Body split: other toons (top) and recent matches (bottom)
             let body = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints([Constraint::Length(3), Constraint::Length(6), Constraint::Min(0)])
+                .constraints([Constraint::Length(7), Constraint::Length(6), Constraint::Min(0)])
                 .split(rows[1]);
 
-            // Profile summary: rating if present
+            // Profile summary: rating and matchup stats if present
             let mut prof_lines: Vec<Line> = Vec::new();
             let rate_text = app.search_rating.map(|r| format!("Rating: {}", r)).unwrap_or_else(|| "Rating: N/A".to_string());
             prof_lines.push(Line::from(Span::raw(rate_text)));
+            if let Some(ref r) = app.search_main_race {
+                prof_lines.push(Line::from(vec![
+                    Span::styled("Race: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                    Span::raw(r.clone()),
+                ]));
+            }
+            if !app.search_matchups.is_empty() {
+                for m in app.search_matchups.iter() {
+                    if let Some((label, rest)) = m.split_once(':') {
+                        prof_lines.push(Line::from(vec![
+                            Span::styled(label.trim(), Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                            Span::raw(":"),
+                            Span::raw(rest.to_string()),
+                        ]));
+                    } else {
+                        prof_lines.push(Line::from(Span::raw(m.clone())));
+                    }
+                }
+            }
             if let Some(err) = &app.search_error { prof_lines.push(Line::from(Span::styled(format!("Error: {}", err), Style::default().fg(Color::Red)))); }
             let profile_panel = Paragraph::new(prof_lines)
                 .alignment(Alignment::Left)
