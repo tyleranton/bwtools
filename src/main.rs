@@ -1,4 +1,5 @@
 use std::io;
+use std::fs;
 use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -26,6 +27,17 @@ fn compute_self_rating(info: &bw_web_api_rs::models::aurora_profile::ScrToonInfo
         return Some(r);
     }
     iter.max_by_key(|s| s.rating).map(|s| s.rating)
+}
+
+fn write_rating_output(cfg: &Config, app: &mut App) {
+    if !cfg.rating_output_enabled { return; }
+    let text = match app.self_profile_rating { Some(r) => r.to_string(), None => "N/A".to_string() };
+    if app.rating_output_last_text.as_deref() == Some(text.as_str()) { return; }
+    if let Some(parent) = cfg.rating_output_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = fs::write(&cfg.rating_output_path, &text);
+    app.rating_output_last_text = Some(text);
 }
 
 fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> io::Result<()> {
@@ -226,6 +238,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                     app.last_rating_poll = None;
                                     app.last_opponent_identity = None;
                                     app.opponent_toons.clear();
+                                    write_rating_output(&cfg, app);
                                 }
                             }
                         }
@@ -284,6 +297,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                 }
                                 app.last_rating_poll = Some(Instant::now());
                                 app.profile_fetched = true;
+                                write_rating_output(&cfg, app);
                             }
                             Err(err) => {
                                 app.last_profile_text = Some(format!("API error: {}", err));
@@ -366,6 +380,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                         app.self_main_race = mr;
                                         app.self_matchups = lines;
                                     }
+                                    write_rating_output(&cfg, app);
                                 }
                                 Err(_) => {
                                     // Still update the timestamp to avoid hammering on repeated failures
