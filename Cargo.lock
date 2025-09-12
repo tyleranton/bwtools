@@ -118,7 +118,10 @@ dependencies = [
  "chrome-cache-parser",
  "chrono",
  "crossterm 0.29.0",
+ "percent-encoding",
  "ratatui",
+ "serde",
+ "serde_json",
  "tokio",
  "url",
 ]

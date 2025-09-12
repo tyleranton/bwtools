@@ -146,10 +146,22 @@ pub fn render(frame: &mut ratatui::Frame, app: &mut App) {
                     .iter()
                     .find(|(t, _, _)| t.eq_ignore_ascii_case(name))
                     .map(|(_, _, r)| *r);
-                let head = match rating {
+                let mut head = match rating {
                     Some(r) => format!("{} • {} • Rating {}", name, crate::api::gateway_label(gw), r),
                     None => format!("{} • {}", name, crate::api::gateway_label(gw)),
                 };
+                // Append history if present
+                let key = name.to_ascii_lowercase();
+                if let Some(rec) = app.opponent_history.get(&key) {
+                    if rec.wins + rec.losses > 0 {
+                        head.push_str(&format!(" • W-L {}-{}", rec.wins, rec.losses));
+                    }
+                    if let (Some(cur), Some(prev)) = (rec.current_rating, rec.previous_rating) {
+                        let diff: i32 = (cur as i32) - (prev as i32);
+                        let sign = if diff >= 0 { "+" } else { "" };
+                        head.push_str(&format!(" • ΔRating {}{}", sign, diff));
+                    }
+                }
                 list_lines.push(Line::from(Span::styled(head, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))));
                 for (toon, gw2, r) in app
                     .opponent_toons_data

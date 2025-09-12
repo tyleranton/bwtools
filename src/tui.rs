@@ -2,7 +2,7 @@ use std::io;
 
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::event::DisableMouseCapture;
-use crossterm::cursor::{EnableBlinking, SetCursorStyle};
+use crossterm::cursor::{EnableBlinking, SetCursorStyle, Show};
 use crossterm::event::EnableMouseCapture;
 use crossterm::{execute, ExecutableCommand};
 use ratatui::backend::CrosstermBackend;
@@ -26,4 +26,17 @@ pub fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -
     execute!(terminal.backend_mut(), DisableMouseCapture, LeaveAlternateScreen)?;
     terminal.show_cursor()?;
     Ok(())
+}
+
+pub fn install_panic_hook() {
+    // Install a panic hook to restore the terminal state if we panic
+    std::panic::set_hook(Box::new(|info| {
+        let _ = disable_raw_mode();
+        let mut stdout = io::stdout();
+        let _ = stdout.execute(DisableMouseCapture);
+        let _ = stdout.execute(LeaveAlternateScreen);
+        let _ = stdout.execute(Show);
+        // Print the panic info to stderr after attempting to restore
+        eprintln!("panic: {}", info);
+    }));
 }

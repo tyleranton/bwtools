@@ -12,3 +12,6 @@ crossterm = "0.29.0"
 ratatui = "0.29.0"
 url = "2.5.7"
 tokio = { version = "1", features = ["rt-multi-thread"] }
+percent-encoding = "2.3.1"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.143"

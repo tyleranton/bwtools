@@ -1,6 +1,7 @@
 use crate::api::ApiHandle;
+use crate::history::OpponentRecord;
 use std::time::Instant;
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use ratatui::layout::Rect;
 
 pub enum View {
@@ -30,7 +31,9 @@ pub struct App {
     pub last_opponent_identity: Option<(String, u16)>,
     pub own_profiles: HashSet<String>,
     pub last_rating_poll: Option<Instant>,
+    pub last_result_poll: Option<Instant>,
     pub rating_output_last_text: Option<String>,
+    pub opponent_history: HashMap<String, OpponentRecord>,
     
     // Search view state
     pub search_name: String,
@@ -78,7 +81,9 @@ impl App {
             last_opponent_identity: None,
             own_profiles: HashSet::new(),
             last_rating_poll: None,
+            last_result_poll: None,
             rating_output_last_text: None,
+            opponent_history: HashMap::new(),
             search_name: String::new(),
             search_gateway: 10,
             search_focus_gateway: false,

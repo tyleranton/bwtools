@@ -4,37 +4,14 @@ use anyhow::{Context, Result};
 use chrome_cache_parser::ChromeCache;
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use url::Url;
+use percent_encoding::percent_decode_str;
 
 fn extract_port(url: &str) -> Option<u16> {
     Url::parse(url).ok().and_then(|parsed| parsed.port())
 }
 
-fn percent_decode_str(s: &str) -> String {
-    let bytes = s.as_bytes();
-    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            let hi = bytes[i + 1];
-            let lo = bytes[i + 2];
-            let hex = |c: u8| -> Option<u8> {
-                match c {
-                    b'0'..=b'9' => Some(c - b'0'),
-                    b'a'..=b'f' => Some(10 + (c - b'a')),
-                    b'A'..=b'F' => Some(10 + (c - b'A')),
-                    _ => None,
-                }
-            };
-            if let (Some(h), Some(l)) = (hex(hi), hex(lo)) {
-                out.push((h << 4) | l);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
+fn decode_segment(seg: &str) -> String {
+    percent_decode_str(seg).decode_utf8_lossy().into_owned()
 }
 
 fn parse_profile_from_url_mmgameloading(url: &str) -> Option<(String, u16)> {
@@ -53,7 +30,7 @@ fn parse_profile_from_url_mmgameloading(url: &str) -> Option<(String, u16)> {
     if s1 != "web-api" || s2 != "v2" || s3 != "aurora-profile-by-toon" {
         return None;
     }
-    let profile = percent_decode_str(segments.next()?);
+    let profile = decode_segment(segments.next()?);
     let gateway_str = segments.next()?;
     let gateway: u16 = gateway_str.parse().ok()?;
     Some((profile, gateway))
@@ -68,7 +45,7 @@ fn parse_profile_from_url_path(url: &str) -> Option<(String, u16)> {
     if s1 != "web-api" || s2 != "v2" || s3 != "aurora-profile-by-toon" {
         return None;
     }
-    let profile = percent_decode_str(segments.next()?);
+    let profile = decode_segment(segments.next()?);
     let gw: u16 = segments.next()?.parse().ok()?;
     Some((profile, gw))
 }
