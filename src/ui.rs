@@ -67,11 +67,11 @@ pub fn render(frame: &mut ratatui::Frame, app: &mut App) {
 
     match app.view {
         View::Main => {
-            // Split main area: header/help (3) + opponent toons list (rest)
+            // Split main area: header/help (3) + self stats (6) + opponent info (rest)
             let main_area = layout[1];
             let sub = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints([Constraint::Length(3), Constraint::Min(0)])
+                .constraints([Constraint::Length(3), Constraint::Length(6), Constraint::Min(0)])
                 .split(main_area);
 
             let header = Paragraph::new(vec![
@@ -84,22 +84,46 @@ pub fn render(frame: &mut ratatui::Frame, app: &mut App) {
             )));
             frame.render_widget(header, sub[0]);
 
-            let mut list_lines: Vec<Line> = Vec::new();
-            if app.opponent_toons.is_empty() {
-                list_lines.push(Line::from(Span::styled(
-                    "No opponent toons yet.",
-                    Style::default().fg(Color::DarkGray),
-                )));
+            // Self profile stats panel
+            let mut stats_lines: Vec<Line> = Vec::new();
+            if let Some(ref r) = app.self_main_race {
+                stats_lines.push(Line::from(vec![
+                    Span::styled("Race: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                    Span::raw(r.clone()),
+                ]));
             } else {
-                for item in app.opponent_toons.iter().take(30) {
-                    list_lines.push(Line::from(Span::raw(item.clone())));
+                stats_lines.push(Line::from(vec![
+                    Span::styled("Race: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                    Span::raw("N/A"),
+                ]));
+            }
+            if app.self_matchups.is_empty() {
+                stats_lines.push(Line::from(Span::styled("No matchup stats.", Style::default().fg(Color::DarkGray))));
+            } else {
+                for m in app.self_matchups.iter() {
+                    if let Some((label, rest)) = m.split_once(':') {
+                        stats_lines.push(Line::from(vec![
+                            Span::styled(label.trim(), Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                            Span::raw(":"),
+                            Span::raw(rest.to_string()),
+                        ]));
+                    } else {
+                        stats_lines.push(Line::from(Span::raw(m.clone())));
+                    }
                 }
             }
+            let stats_panel = Paragraph::new(stats_lines)
+                .alignment(Alignment::Left)
+                .block(Block::default().borders(Borders::ALL).title(Span::styled(
+                    "Profile Stats",
+                    Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                )));
+            frame.render_widget(stats_panel, sub[1]);
             let list_block = Block::default().borders(Borders::ALL).title(Span::styled(
                 "Opponent Info",
                 Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
             ));
-            let list_inner = list_block.inner(sub[1]);
+            let list_inner = list_block.inner(sub[2]);
             // Build opponent info lines: highlight detected opponent first, then other toons
             let mut list_lines: Vec<Line> = Vec::new();
             if let (Some(name), Some(gw)) = (&app.profile_name, app.gateway) {
@@ -146,7 +170,7 @@ pub fn render(frame: &mut ratatui::Frame, app: &mut App) {
                 .alignment(Alignment::Left)
                 .block(list_block);
             app.main_opponent_toons_rect = Some(list_inner);
-            frame.render_widget(list_panel, sub[1]);
+            frame.render_widget(list_panel, sub[2]);
         }
         View::Debug => {
             let middle = layout[1];

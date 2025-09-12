@@ -111,7 +111,7 @@ dependencies = [
 
 [[package]]
 name = "bwtools"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "bw-web-api-rs",

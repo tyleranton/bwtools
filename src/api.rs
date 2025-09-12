@@ -148,6 +148,66 @@ impl ApiHandle {
         }
         out
     }
+
+    pub fn profile_stats_last100(&self, profile: &ScrProfile, main_toon: &str) -> (Option<String>, Vec<String>) {
+        // Collect 1v1 games with real players and identify main player and opponent with races
+        // Sort by create_time desc, then take 100
+        let mut games: Vec<(&bw_web_api_rs::models::common::Player, &bw_web_api_rs::models::common::Player, u64)> = Vec::new();
+        for g in profile.game_results.iter() {
+            // Filter players
+            let actual: Vec<&bw_web_api_rs::models::common::Player> = g
+                .players
+                .iter()
+                .filter(|p| p.attributes.r#type == "player" && !p.toon.trim().is_empty())
+                .collect();
+            if actual.len() != 2 { continue; }
+            // Find main
+            let mi = if actual[0].toon.eq_ignore_ascii_case(main_toon) { 0 } else if actual[1].toon.eq_ignore_ascii_case(main_toon) { 1 } else { continue };
+            let oi = 1 - mi;
+            let ts = g.create_time.parse::<u64>().unwrap_or(0);
+            games.push((actual[mi], actual[oi], ts));
+        }
+        games.sort_by(|a,b| b.2.cmp(&a.2));
+        games.truncate(100);
+
+        // Determine main race by most frequent race of main player
+        let mut rc = std::collections::HashMap::new();
+        for (m, _, _) in games.iter() {
+            if let Some(r) = &m.attributes.race { *rc.entry(r.to_lowercase()).or_insert(0usize) += 1; }
+        }
+        let main_race = rc.into_iter().max_by_key(|(_, n)| *n).map(|(r, _)| r);
+
+        // Compute matchup winrates for games where main played main_race
+        let mut vs: std::collections::HashMap<String, (u32, u32)> = std::collections::HashMap::new();
+        if let Some(ref mr) = main_race {
+            for (m, o, _) in games.iter() {
+                let mrace = m.attributes.race.as_deref().unwrap_or("").to_lowercase();
+                if mrace != *mr { continue; }
+                let o_race = o.attributes.race.as_deref().unwrap_or("").to_lowercase();
+                let entry = vs.entry(o_race).or_insert((0,0));
+                // wins, total
+                entry.1 += 1;
+                let res = m.result.to_lowercase();
+                if res == "win" { entry.0 += 1; }
+            }
+        }
+        // Format lines as XvX with main race initial
+        let main_label = |r: &str| match r { "protoss"=>"Protoss", "terran"=>"Terran", "zerg"=>"Zerg", _=>"Unknown" };
+        let main_initial = |r: &str| match r { "protoss"=>"P", "terran"=>"T", "zerg"=>"Z", _=>"?" };
+        let opp_initial = |r: &str| match r { "protoss"=>"P", "terran"=>"T", "zerg"=>"Z", _=>"?" };
+        let order = ["protoss","terran","zerg"];
+        let mut lines: Vec<String> = Vec::new();
+        let mr_init = main_race.as_deref().map(|s| main_initial(s)).unwrap_or("?");
+        for r in order.iter() {
+            if let Some((wins, total)) = vs.get(&r.to_string()) {
+                if *total > 0 {
+                    let pct = ((*wins as f32) / (*total as f32)) * 100.0;
+                    lines.push(format!("{}v{}: {:.0}% ({} / {})", mr_init, opp_initial(r), pct.round(), wins, total));
+                }
+            }
+        }
+        (main_race.map(|s| main_label(&s).to_string()), lines)
+    }
 }
 pub fn map_gateway(num: u16) -> Option<Gateway> {
     match num {

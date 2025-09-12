@@ -46,6 +46,9 @@ pub struct App {
     pub status_opponent_rect: Option<Rect>,
     pub main_opponent_toons_rect: Option<Rect>,
     pub search_other_toons_rect: Option<Rect>,
+    // Self stats for main view
+    pub self_main_race: Option<String>,
+    pub self_matchups: Vec<String>,
 }
 
 impl App {
@@ -85,6 +88,8 @@ impl App {
             status_opponent_rect: None,
             main_opponent_toons_rect: None,
             search_other_toons_rect: None,
+            self_main_race: None,
+            self_matchups: Vec::new(),
         }
     }
 

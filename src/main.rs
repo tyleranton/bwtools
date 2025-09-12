@@ -275,6 +275,12 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                 app.last_profile_text = Some(out);
                                 app.self_profile_rating = compute_self_rating(&info, name);
                                 app.own_profiles = info.profiles.iter().map(|p| p.toon.clone()).collect();
+                                // Fetch profile for stats
+                                if let Ok(profile) = api.get_scr_profile(name, gw) {
+                                    let (mr, lines) = api.profile_stats_last100(&profile, name);
+                                    app.self_main_race = mr;
+                                    app.self_matchups = lines;
+                                }
                                 app.last_rating_poll = Some(Instant::now());
                                 app.profile_fetched = true;
                             }
@@ -349,6 +355,11 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                 Ok(info) => {
                                     app.self_profile_rating = compute_self_rating(&info, name);
                                     app.last_rating_poll = Some(Instant::now());
+                                    if let Ok(profile) = api.get_scr_profile(name, gw) {
+                                        let (mr, lines) = api.profile_stats_last100(&profile, name);
+                                        app.self_main_race = mr;
+                                        app.self_matchups = lines;
+                                    }
                                 }
                                 Err(_) => {
                                     // Still update the timestamp to avoid hammering on repeated failures
