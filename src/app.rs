@@ -31,9 +31,13 @@ pub struct App {
     pub last_opponent_identity: Option<(String, u16)>,
     pub own_profiles: HashSet<String>,
     pub last_rating_poll: Option<Instant>,
-    pub last_result_poll: Option<Instant>,
     pub rating_output_last_text: Option<String>,
     pub opponent_history: HashMap<String, OpponentRecord>,
+    // Replay watcher state
+    pub screp_available: bool,
+    pub last_replay_mtime: Option<std::time::SystemTime>,
+    pub last_replay_processed_mtime: Option<std::time::SystemTime>,
+    pub replay_changed_at: Option<Instant>,
     
     // Search view state
     pub search_name: String,
@@ -81,9 +85,12 @@ impl App {
             last_opponent_identity: None,
             own_profiles: HashSet::new(),
             last_rating_poll: None,
-            last_result_poll: None,
             rating_output_last_text: None,
             opponent_history: HashMap::new(),
+            screp_available: false,
+            last_replay_mtime: None,
+            last_replay_processed_mtime: None,
+            replay_changed_at: None,
             search_name: String::new(),
             search_gateway: 10,
             search_focus_gateway: false,

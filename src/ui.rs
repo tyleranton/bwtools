@@ -286,30 +286,51 @@ pub fn render(frame: &mut ratatui::Frame, app: &mut App) {
                 .constraints([Constraint::Length(7), Constraint::Length(6), Constraint::Min(0)])
                 .split(rows[1]);
 
-            // Profile summary: rating and matchup stats if present
+            // Profile summary: rating and matchup stats if present; hide for self
             let mut prof_lines: Vec<Line> = Vec::new();
-            let rate_text = app.search_rating.map(|r| format!("Rating: {}", r)).unwrap_or_else(|| "Rating: N/A".to_string());
-            prof_lines.push(Line::from(Span::raw(rate_text)));
-            if let Some(ref r) = app.search_main_race {
-                prof_lines.push(Line::from(vec![
-                    Span::styled("Race: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                    Span::raw(r.clone()),
-                ]));
-            }
-            if !app.search_matchups.is_empty() {
-                for m in app.search_matchups.iter() {
-                    if let Some((label, rest)) = m.split_once(':') {
-                        prof_lines.push(Line::from(vec![
-                            Span::styled(label.trim(), Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                            Span::raw(":"),
-                            Span::raw(rest.to_string()),
-                        ]));
-                    } else {
-                        prof_lines.push(Line::from(Span::raw(m.clone())));
+            let is_self = app
+                .self_profile_name
+                .as_ref()
+                .map(|n| n.eq_ignore_ascii_case(&app.search_name))
+                .unwrap_or(false)
+                && app.self_gateway == Some(app.search_gateway);
+            if is_self {
+                prof_lines.push(Line::from(Span::styled(
+                    "Self profile — see Main panel.",
+                    Style::default().fg(Color::DarkGray),
+                )));
+            } else {
+                let rate_text = app
+                    .search_rating
+                    .map(|r| format!("Rating: {}", r))
+                    .unwrap_or_else(|| "Rating: N/A".to_string());
+                prof_lines.push(Line::from(Span::raw(rate_text)));
+                if let Some(ref r) = app.search_main_race {
+                    prof_lines.push(Line::from(vec![
+                        Span::styled("Race: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                        Span::raw(r.clone()),
+                    ]));
+                }
+                if !app.search_matchups.is_empty() {
+                    for m in app.search_matchups.iter() {
+                        if let Some((label, rest)) = m.split_once(':') {
+                            prof_lines.push(Line::from(vec![
+                                Span::styled(label.trim(), Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                                Span::raw(":"),
+                                Span::raw(rest.to_string()),
+                            ]));
+                        } else {
+                            prof_lines.push(Line::from(Span::raw(m.clone())));
+                        }
                     }
                 }
+                if let Some(err) = &app.search_error {
+                    prof_lines.push(Line::from(Span::styled(
+                        format!("Error: {}", err),
+                        Style::default().fg(Color::Red),
+                    )));
+                }
             }
-            if let Some(err) = &app.search_error { prof_lines.push(Line::from(Span::styled(format!("Error: {}", err), Style::default().fg(Color::Red)))); }
             let profile_panel = Paragraph::new(prof_lines)
                 .alignment(Alignment::Left)
                 .block(Block::default().borders(Borders::ALL).title(Span::styled(
