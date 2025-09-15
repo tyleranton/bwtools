@@ -202,17 +202,31 @@ impl ApiHandle {
             results.push(m.result.eq_ignore_ascii_case("win"));
         }
         // Format lines as XvX with main race initial
-        let main_label = |r: &str| match r { "protoss"=>"Protoss", "terran"=>"Terran", "zerg"=>"Zerg", _=>"Unknown" };
-        let main_initial = |r: &str| match r { "protoss"=>"P", "terran"=>"T", "zerg"=>"Z", _=>"?" };
-        let opp_initial = |r: &str| match r { "protoss"=>"P", "terran"=>"T", "zerg"=>"Z", _=>"?" };
+        let main_label = |r: &str| match r {
+            "protoss"=>"Protoss", "terran"=>"Terran", "zerg"=>"Zerg", _=>"Unknown"
+        };
+        let main_initial = |r: &str| match r {
+            "protoss"=>"P", "terran"=>"T", "zerg"=>"Z", _=>"?"
+        };
+        let opp_initial = |r: &str| match r {
+            "protoss"=>"P", "terran"=>"T", "zerg"=>"Z", _=>"?"
+        };
         let order = ["protoss","terran","zerg"];
         let mut lines: Vec<String> = Vec::new();
-        let mr_init = main_race.as_deref().map(|s| main_initial(s)).unwrap_or("?");
+        let mr_init = main_race.as_deref().map(main_initial).unwrap_or("?");
+        #[allow(clippy::collapsible_if)]
         for r in order.iter() {
-            if let Some((wins, total)) = vs.get(&r.to_string()) {
+            if let Some((wins, total)) = vs.get(*r) {
                 if *total > 0 {
                     let pct = ((*wins as f32) / (*total as f32)) * 100.0;
-                    lines.push(format!("{}v{}: {:.0}% ({} / {})", mr_init, opp_initial(r), pct.round(), wins, total));
+                    lines.push(format!(
+                        "{}v{}: {:.0}% ({} / {})",
+                        mr_init,
+                        opp_initial(r),
+                        pct.round(),
+                        wins,
+                        total,
+                    ));
                 }
             }
         }

@@ -133,6 +133,7 @@ impl App {
         self.opponent_output_last_text = None;
     }
 
+    #[allow(clippy::collapsible_if)]
     pub fn on_key(&mut self, code: crossterm::event::KeyCode) {
         // If we are in Search view, handle input locally and do not trigger global hotkeys
         if matches!(self.view, View::Search) {

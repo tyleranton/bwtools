@@ -1,3 +1,4 @@
+#![allow(clippy::collapsible_if, clippy::type_complexity)]
 use std::time::SystemTime;
 
 pub fn parse_screp_overview(text: &str) -> (Option<String>, Vec<(u8, Option<String>, String)>) {
@@ -53,12 +54,20 @@ pub fn tick_replay_and_rating_retry(app: &mut App, cfg: &Config) {
                                 overlay::write_rating(cfg, app);
                             } else {
                                 app.rating_retry_retries = app.rating_retry_retries.saturating_sub(1);
-                                app.rating_retry_next_at = Some(std::time::Instant::now().checked_add(cfg.rating_retry_interval).unwrap_or_else(|| std::time::Instant::now()));
+                                app.rating_retry_next_at = Some(
+                                    std::time::Instant::now()
+                                        .checked_add(cfg.rating_retry_interval)
+                                        .unwrap_or_else(std::time::Instant::now),
+                                );
                             }
                         }
                         Err(_) => {
                             app.rating_retry_retries = app.rating_retry_retries.saturating_sub(1);
-                            app.rating_retry_next_at = Some(std::time::Instant::now().checked_add(cfg.rating_retry_interval).unwrap_or_else(|| std::time::Instant::now()));
+                            app.rating_retry_next_at = Some(
+                                std::time::Instant::now()
+                                    .checked_add(cfg.rating_retry_interval)
+                                    .unwrap_or_else(std::time::Instant::now),
+                            );
                         }
                     }
                 } else {
@@ -74,7 +83,9 @@ pub fn tick_replay_and_rating_retry(app: &mut App, cfg: &Config) {
     if app.screp_available {
         if let Ok(meta) = std::fs::metadata(&cfg.last_replay_path) {
             if let Ok(mtime) = meta.modified() {
-                let changed = app.last_replay_processed_mtime.map_or(true, |p| mtime > p);
+                let changed = app
+                    .last_replay_processed_mtime
+                    .is_none_or(|p| mtime > p);
                 if changed {
                     app.last_replay_mtime = Some(mtime);
                     if app.replay_changed_at.is_none() {
@@ -119,7 +130,11 @@ pub fn tick_replay_and_rating_retry(app: &mut App, cfg: &Config) {
                                     if win { entry.wins = entry.wins.saturating_add(1); } else { entry.losses = entry.losses.saturating_add(1); }
                                     // Fill race if unknown from screp
                                     if entry.race.is_none() {
-                                        if let Some((_, race, _)) = players.iter().find(|(t, _, n)| *t != st && n.eq_ignore_ascii_case(&opp_name)) {
+                                        if let Some((_, race, _)) = players
+                                            .iter()
+                                            .find(|(t, _, n)| *t != st
+                                                && n.eq_ignore_ascii_case(&opp_name))
+                                        {
                                             entry.race = race.clone();
                                         }
                                     }
@@ -135,7 +150,11 @@ pub fn tick_replay_and_rating_retry(app: &mut App, cfg: &Config) {
                                             if new == old {
                                                 app.rating_retry_baseline = old;
                                                 app.rating_retry_retries = cfg.rating_retry_max;
-                                                app.rating_retry_next_at = Some(std::time::Instant::now().checked_add(cfg.rating_retry_interval).unwrap_or_else(|| std::time::Instant::now()));
+                                                app.rating_retry_next_at = Some(
+                                                    std::time::Instant::now()
+                                                        .checked_add(cfg.rating_retry_interval)
+                                                        .unwrap_or_else(std::time::Instant::now),
+                                                );
                                             } else {
                                                 app.rating_retry_retries = 0;
                                                 app.rating_retry_next_at = None;
@@ -145,7 +164,11 @@ pub fn tick_replay_and_rating_retry(app: &mut App, cfg: &Config) {
                                             // If immediate fetch fails, also schedule retries
                                             app.rating_retry_baseline = app.self_profile_rating;
                                             app.rating_retry_retries = cfg.rating_retry_max;
-                                            app.rating_retry_next_at = Some(std::time::Instant::now().checked_add(cfg.rating_retry_interval).unwrap_or_else(|| std::time::Instant::now()));
+                                            app.rating_retry_next_at = Some(
+                                                std::time::Instant::now()
+                                                    .checked_add(cfg.rating_retry_interval)
+                                                    .unwrap_or_else(std::time::Instant::now),
+                                            );
                                         }
                                     }
                                 }

@@ -91,7 +91,12 @@ impl CacheReader {
         }
     }
 
-    pub fn latest_opponent_profile(&self, exclude_name: Option<&str>, window_secs: i64) -> Result<Option<(String, u16)>> {
+    #[allow(clippy::collapsible_if)]
+    pub fn latest_opponent_profile(
+        &self,
+        exclude_name: Option<&str>,
+        window_secs: i64,
+    ) -> Result<Option<(String, u16)>> {
         let now = Utc::now();
         let work = || -> Result<Option<(String, u16)>> {
             let entries = self.cache.entries().context("Failed to read cache entries")?;
