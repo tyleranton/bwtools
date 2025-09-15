@@ -40,6 +40,10 @@ pub struct App {
     pub last_replay_processed_mtime: Option<std::time::SystemTime>,
     pub replay_changed_at: Option<Instant>,
     pub opponent_output_last_text: Option<String>,
+    // Post-replay rating retry state
+    pub rating_retry_retries: u8,
+    pub rating_retry_next_at: Option<Instant>,
+    pub rating_retry_baseline: Option<u32>,
     
     // Search view state
     pub search_name: String,
@@ -95,6 +99,9 @@ impl App {
             last_replay_processed_mtime: None,
             replay_changed_at: None,
             opponent_output_last_text: None,
+            rating_retry_retries: 0,
+            rating_retry_next_at: None,
+            rating_retry_baseline: None,
             search_name: String::new(),
             search_gateway: 10,
             search_focus_gateway: false,
@@ -114,6 +121,16 @@ impl App {
             self_main_race: None,
             self_matchups: Vec::new(),
         }
+    }
+
+    pub fn reset_opponent_state(&mut self) {
+        self.profile_name = None;
+        self.gateway = None;
+        self.opponent_toons.clear();
+        self.opponent_toons_data.clear();
+        self.last_opponent_identity = None;
+        self.opponent_race = None;
+        self.opponent_output_last_text = None;
     }
 
     pub fn on_key(&mut self, code: crossterm::event::KeyCode) {

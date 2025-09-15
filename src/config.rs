@@ -17,6 +17,8 @@ pub struct Config {
     pub replay_settle: Duration,
     pub opponent_output_enabled: bool,
     pub opponent_output_path: PathBuf,
+    pub rating_retry_max: u8,
+    pub rating_retry_interval: Duration,
 }
 
 impl Default for Config {
@@ -36,6 +38,8 @@ impl Default for Config {
             replay_settle: Duration::from_millis(500),
             opponent_output_enabled: true,
             opponent_output_path: default_opponent_output_path(),
+            rating_retry_max: 3,
+            rating_retry_interval: Duration::from_millis(500),
         }
     }
 }

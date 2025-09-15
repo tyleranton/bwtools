@@ -53,10 +53,10 @@ impl ApiHandle {
             entry.2 = entry.2.saturating_add(s.wins + s.losses);
             if s.rating > entry.3 { entry.3 = s.rating; }
         }
-        // Keep only those with total games >= 5
+        // Keep only those with total games >= RATING_MIN_GAMES
         let by_guid: std::collections::HashMap<u32, (String, u16, u32)> = agg
             .into_iter()
-            .filter(|(_, (_, _, total, _))| *total >= 5)
+            .filter(|(_, (_, _, total, _))| *total >= RATING_MIN_GAMES)
             .map(|(guid, (toon, gw, _total, max_rating))| (guid, (toon, gw, max_rating)))
             .collect();
 
@@ -81,7 +81,12 @@ impl ApiHandle {
             total_games = total_games.saturating_add(s.wins + s.losses);
             max_rating = Some(max_rating.map_or(s.rating, |m| m.max(s.rating)));
         }
-        if total_games >= 5 { max_rating } else { None }
+        if total_games >= RATING_MIN_GAMES { max_rating } else { None }
+    }
+
+    pub fn compute_rating_for_name(&self, info: &ScrToonInfo, profile_name: &str) -> Option<u32> {
+        let guid = find_guid_for_toon(info, profile_name)?;
+        self.compute_rating_for_guid(info, guid)
     }
 
     pub fn other_toons_with_ratings(&self, info: &ScrToonInfo, main_toon: &str) -> Vec<(String, u16, u32)> {
@@ -213,6 +218,24 @@ impl ApiHandle {
         }
         (main_race.map(|s| main_label(&s).to_string()), lines, results)
     }
+}
+// Minimum games threshold used for displaying a rating
+pub const RATING_MIN_GAMES: u32 = 5;
+
+pub fn find_guid_for_toon(info: &ScrToonInfo, profile_name: &str) -> Option<u32> {
+    let season = info.matchmaked_current_season;
+    info
+        .profiles
+        .iter()
+        .find(|p| p.toon.eq_ignore_ascii_case(profile_name))
+        .map(|p| p.toon_guid)
+        .or_else(|| {
+            info
+                .matchmaked_stats
+                .iter()
+                .find(|s| s.season_id == season && s.toon.eq_ignore_ascii_case(profile_name))
+                .map(|s| s.toon_guid)
+        })
 }
 pub fn map_gateway(num: u16) -> Option<Gateway> {
     match num {

@@ -60,14 +60,12 @@ pub fn render(frame: &mut ratatui::Frame, app: &mut App) {
     let status = Paragraph::new(status_lines)
         .alignment(Alignment::Left)
         .block(status_block);
-    // No clickable opponent in status line
     app.status_opponent_rect = None;
     frame.render_widget(status, layout[0]);
 
 
     match app.view {
         View::Main => {
-            // Split main area: header/help (3) + self stats (7) + opponent info (rest)
             let main_area = layout[1];
             let sub = Layout::default()
                 .direction(Direction::Vertical)
@@ -84,14 +82,12 @@ pub fn render(frame: &mut ratatui::Frame, app: &mut App) {
             )));
             frame.render_widget(header, sub[0]);
 
-            // Self profile stats panel with results sparkline on the right
             let stats_block = Block::default().borders(Borders::ALL).title(Span::styled(
                 "Profile Stats",
                 Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
             ));
             let stats_area = sub[1];
             let stats_inner = stats_block.inner(stats_area);
-            // Split into text + sparkline columns
             let cols = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([Constraint::Percentage(65), Constraint::Min(10)])
@@ -124,11 +120,9 @@ pub fn render(frame: &mut ratatui::Frame, app: &mut App) {
                     }
                 }
             }
-            // Render block and left column
             frame.render_widget(stats_block, stats_area);
             frame.render_widget(Paragraph::new(stats_lines).alignment(Alignment::Left), cols[0]);
 
-            // No separate trend column; keep right column empty for now
             frame.render_widget(
                 Paragraph::new(Line::from(Span::raw(""))).alignment(Alignment::Left),
                 cols[1],
@@ -138,7 +132,6 @@ pub fn render(frame: &mut ratatui::Frame, app: &mut App) {
                 Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
             ));
             let list_inner = list_block.inner(sub[2]);
-            // Build opponent info lines: highlight detected opponent first, then other toons
             let mut list_lines: Vec<Line> = Vec::new();
             if let (Some(name), Some(gw)) = (&app.profile_name, app.gateway) {
                 let rating = app
@@ -246,7 +239,6 @@ pub fn render(frame: &mut ratatui::Frame, app: &mut App) {
         }
         View::Search => {
             let area = layout[1];
-            // Input panel + body panels (give input enough height for all fields)
             let rows = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([Constraint::Length(7), Constraint::Min(0)])
@@ -283,13 +275,11 @@ pub fn render(frame: &mut ratatui::Frame, app: &mut App) {
                 frame.set_cursor_position((x, y));
             }
 
-            // Body split: other toons (top) and recent matches (bottom)
             let body = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([Constraint::Length(7), Constraint::Length(6), Constraint::Min(0)])
                 .split(rows[1]);
 
-            // Profile summary: rating and matchup stats if present; hide for self
             let mut prof_lines: Vec<Line> = Vec::new();
             let is_self = app
                 .self_profile_name

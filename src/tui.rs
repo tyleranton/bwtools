@@ -29,14 +29,12 @@ pub fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -
 }
 
 pub fn install_panic_hook() {
-    // Install a panic hook to restore the terminal state if we panic
     std::panic::set_hook(Box::new(|info| {
         let _ = disable_raw_mode();
         let mut stdout = io::stdout();
         let _ = stdout.execute(DisableMouseCapture);
         let _ = stdout.execute(LeaveAlternateScreen);
         let _ = stdout.execute(Show);
-        // Print the panic info to stderr after attempting to restore
         eprintln!("panic: {}", info);
     }));
 }

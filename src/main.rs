@@ -1,5 +1,4 @@
 use std::io;
-use std::fs;
 use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -13,111 +12,17 @@ mod cache;
 mod history;
 mod tui;
 mod ui;
+mod overlay;
+mod replay;
+mod detect;
 
 use crate::app::App;
 use crate::cache::CacheReader;
 use crate::config::Config;
-use crate::history::{OpponentRecord, load_history, save_history};
+use crate::history::load_history;
 use std::path::Path;
-use std::process::Command;
 use crate::tui::{restore_terminal, setup_terminal, install_panic_hook};
 use crate::ui::render;
-
-fn compute_self_rating(info: &bw_web_api_rs::models::aurora_profile::ScrToonInfo, profile_name: &str) -> Option<u32> {
-    // Prefer matching by profile list (case-insensitive), else fall back to season stats by toon name
-    let season = info.matchmaked_current_season;
-    let toon_guid = info
-        .profiles
-        .iter()
-        .find(|p| p.toon.eq_ignore_ascii_case(profile_name))
-        .map(|p| p.toon_guid)
-        .or_else(|| {
-            info
-                .matchmaked_stats
-                .iter()
-                .find(|s| s.season_id == season && s.toon.eq_ignore_ascii_case(profile_name))
-                .map(|s| s.toon_guid)
-        })?;
-
-    let iter = info.matchmaked_stats.iter().filter(|s| s.toon_guid == toon_guid);
-    if let Some(r) = iter.clone().filter(|s| s.season_id == season).max_by_key(|s| s.rating).map(|s| s.rating) {
-        return Some(r);
-    }
-    iter.max_by_key(|s| s.rating).map(|s| s.rating)
-}
-
-fn write_rating_output(cfg: &Config, app: &mut App) {
-    if !cfg.rating_output_enabled { return; }
-    let text = match app.self_profile_rating { Some(r) => r.to_string(), None => "N/A".to_string() };
-    if app.rating_output_last_text.as_deref() == Some(text.as_str()) { return; }
-    if let Some(parent) = cfg.rating_output_path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    let _ = fs::write(&cfg.rating_output_path, &text);
-    app.rating_output_last_text = Some(text);
-}
-
-fn write_opponent_output(cfg: &Config, app: &mut App) {
-    if !cfg.opponent_output_enabled { return; }
-    let name = match &app.profile_name { Some(n) => n.clone(), None => { return; } };
-    // Race from history if known
-    let race = app
-        .opponent_race
-        .clone()
-        .unwrap_or_else(|| "Unknown".to_string());
-    // Rating from opponent_toons_data if present
-    let rating_opt = app
-        .opponent_toons_data
-        .iter()
-        .find(|(t, _, _)| t.eq_ignore_ascii_case(&name))
-        .map(|(_, _, r)| *r);
-    let rating_text = rating_opt.map(|r| r.to_string()).unwrap_or_else(|| "N/A".to_string());
-    // Append W-L if we have any history
-    let wl_text = app
-        .opponent_history
-        .get(&name.to_ascii_lowercase())
-        .filter(|rec| rec.wins + rec.losses > 0)
-        .map(|rec| format!(" • W-L {}-{}", rec.wins, rec.losses))
-        .unwrap_or_default();
-    let text = format!("{} • {} • {}{}", name, race, rating_text, wl_text);
-    if app.opponent_output_last_text.as_deref() == Some(text.as_str()) { return; }
-    if let Some(parent) = cfg.opponent_output_path.parent() { let _ = fs::create_dir_all(parent); }
-    let _ = fs::write(&cfg.opponent_output_path, &text);
-    app.opponent_output_last_text = Some(text);
-}
-
-fn parse_screp_overview(text: &str) -> (Option<String>, Vec<(u8, Option<String>, String)>) {
-    // Returns (winner_team_label like "Team 1", players list of (team, race, name))
-    let mut winner: Option<String> = None;
-    let mut in_players = false;
-    let mut players: Vec<(u8, Option<String>, String)> = Vec::new();
-    for line in text.lines() {
-        let l = line.trim_end();
-        if l.to_ascii_lowercase().starts_with("winner") {
-            if let Some((_, v)) = l.split_once(':') {
-                winner = Some(v.trim().to_string());
-            }
-        }
-        if l.starts_with("Team  R  APM") { in_players = true; continue; }
-        if in_players {
-            if l.trim().is_empty() { continue; }
-            // Example: "  1   P    0    0   4  bwtest"
-            let parts: Vec<&str> = l.split_whitespace().collect();
-            if parts.len() >= 6 {
-                let team = parts[0].parse::<u8>().unwrap_or(0);
-                let r = parts[1];
-                let race = match r.to_ascii_uppercase().as_str() { "P"=>Some("Protoss".to_string()), "T"=>Some("Terran".to_string()), "Z"=>Some("Zerg".to_string()), _=>None };
-                let name = parts[5..].join(" ");
-                players.push((team, race, name));
-            }
-        }
-    }
-    (winner, players)
-}
-
-fn system_time_secs(st: std::time::SystemTime) -> Option<u64> {
-    st.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs())
-}
 
 fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> io::Result<()> {
     let cfg: Config = Default::default();
@@ -303,148 +208,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                     last_refresh = Instant::now();
                 }
 
-                if app.port.is_none() {
-                    if let Ok(port_opt) = r.parse_for_port(cfg.scan_window_secs) {
-                        if port_opt.is_some() { app.port = port_opt; }
-                    }
-                }
-
-                if app.port.is_some() && app.self_profile_name.is_none() {
-                    if let Ok(self_opt) = r.latest_self_profile(cfg.scan_window_secs) {
-                        if let Some((name, gw)) = self_opt {
-                            app.self_profile_name = Some(name);
-                            app.self_gateway = Some(gw);
-                        }
-                    }
-                }
-
-                if let Some(p) = app.port {
-                    if app.api.is_none() || app.last_port_used != Some(p) {
-                        let base_url = format!("http://127.0.0.1:{p}");
-                        app.api = crate::api::ApiHandle::new(base_url).ok();
-                        app.last_port_used = Some(p);
-                    }
-                }
-
-                if app.is_ready() {
-                    if let Ok(self_mm_opt) = r.latest_mmgameloading_profile(cfg.scan_window_secs) {
-                        if let Some((mm_name, mm_gw)) = self_mm_opt {
-                            if app.own_profiles.contains(&mm_name) {
-                                if app.self_profile_name.as_deref() != Some(&mm_name) || app.self_gateway != Some(mm_gw) {
-                                    app.self_profile_name = Some(mm_name);
-                                    app.self_gateway = Some(mm_gw);
-                                    app.self_profile_rating = None;
-                                    app.profile_fetched = false;
-                                    app.last_profile_text = None;
-                                    app.last_rating_poll = None;
-                                    app.last_opponent_identity = None;
-                                    app.opponent_toons.clear();
-                                    app.opponent_race = None;
-                                    write_rating_output(&cfg, app);
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if app.is_ready() {
-                    if let Ok(profile_opt) = r.latest_opponent_profile(app.self_profile_name.as_deref(), cfg.scan_window_secs) {
-                        if let Some((name, gw)) = profile_opt {
-                            if !app.own_profiles.contains(&name) {
-                                app.profile_name = Some(name);
-                                app.gateway = Some(gw);
-                                if let (Some(api), Some(opp_name), Some(opp_gw)) = (&app.api, &app.profile_name, app.gateway) {
-                                    let identity = (opp_name.clone(), opp_gw);
-                                    if app.last_opponent_identity.as_ref() != Some(&identity) {
-                                        // Reset derived opponent fields when identity changes
-                                        app.opponent_race = None;
-                                        if let Ok(list) = api.opponent_toons_summary(opp_name, opp_gw) {
-                                        app.opponent_toons_data = list.clone();
-                                        app.opponent_toons = list
-                                            .into_iter()
-                                            .map(|(toon, gw_num, rating)| format!("{} • {} • {}", toon, crate::api::gateway_label(gw_num), rating))
-                                            .collect();
-                                            app.last_opponent_identity = Some(identity);
-                                        }
-                                        // Also fetch opponent profile to compute their main race like we do for self
-                                        if let Ok(profile) = api.get_scr_profile(opp_name, opp_gw) {
-                                            let (mr, _lines, _results) = api.profile_stats_last100(&profile, opp_name);
-                                            app.opponent_race = mr;
-                                        }
-                                        // Update opponent history with latest rating snapshot
-                                        if let Ok(info) = api.get_toon_info(opp_name, opp_gw) {
-                                            // Find guid for opp_name (case-insensitive), or fallback via season stats
-                                            let season = info.matchmaked_current_season;
-                                            let guid = info
-                                                .profiles
-                                                .iter()
-                                                .find(|p| p.toon.eq_ignore_ascii_case(opp_name))
-                                                .map(|p| p.toon_guid)
-                                                .or_else(|| info
-                                                    .matchmaked_stats
-                                                    .iter()
-                                                    .find(|s| s.season_id == season && s.toon.eq_ignore_ascii_case(opp_name))
-                                                    .map(|s| s.toon_guid)
-                                                );
-                                            let rating = guid.and_then(|g| api.compute_rating_for_guid(&info, g));
-                                            let key = opp_name.to_ascii_lowercase();
-                                            let is_new = !app.opponent_history.contains_key(&key);
-                                            let entry = app.opponent_history.entry(key.clone()).or_insert_with(|| OpponentRecord {
-                                                name: opp_name.clone(),
-                                                gateway: opp_gw,
-                                                race: None,
-                                                current_rating: None,
-                                                previous_rating: None,
-                                                wins: 0,
-                                                losses: 0,
-                                                last_match_ts: None,
-                                            });
-                                            entry.name = opp_name.clone();
-                                            entry.gateway = opp_gw;
-                                            entry.previous_rating = entry.current_rating;
-                                            entry.current_rating = rating;
-                                            // If we have no prior W/L data for this opponent, scan our match history to backfill
-                                            if is_new || (entry.wins + entry.losses == 0) {
-                                                if let (Some(self_name), Some(self_gw)) = (&app.self_profile_name, app.self_gateway) {
-                                                    if let Ok(profile) = api.get_scr_profile(self_name, self_gw) {
-                                                        let mut wins = 0u32;
-                                                        let mut losses = 0u32;
-                                                        let mut last_ts: u64 = 0;
-                                                        let mut last_race: Option<String> = None;
-                                                        for g in profile.game_results.iter() {
-                                                            let players: Vec<&bw_web_api_rs::models::common::Player> = g
-                                                                .players
-                                                                .iter()
-                                                                .filter(|p| p.attributes.r#type == "player" && !p.toon.trim().is_empty())
-                                                                .collect();
-                                                            if players.len() != 2 { continue; }
-                                                            let mi = if players[0].toon.eq_ignore_ascii_case(self_name) { 0 } else if players[1].toon.eq_ignore_ascii_case(self_name) { 1 } else { continue };
-                                                            let oi = 1 - mi;
-                                                            if !players[oi].toon.eq_ignore_ascii_case(opp_name) { continue; }
-                                                            let ts = g.create_time.parse::<u64>().unwrap_or(0);
-                                                            if players[mi].result.eq_ignore_ascii_case("win") { wins = wins.saturating_add(1); } else if players[mi].result.eq_ignore_ascii_case("loss") { losses = losses.saturating_add(1); }
-                                                            if ts > last_ts {
-                                                                last_ts = ts;
-                                                                last_race = players[oi].attributes.race.clone();
-                                                            }
-                                                        }
-                                                        entry.wins = wins;
-                                                        entry.losses = losses;
-                                                        entry.last_match_ts = if last_ts > 0 { Some(last_ts) } else { None };
-                                                        if entry.race.is_none() {
-                                                            entry.race = last_race.map(|s| match s.to_lowercase().as_str() { "protoss"=>"Protoss".to_string(), "terran"=>"Terran".to_string(), "zerg"=>"Zerg".to_string(), _=>s });
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            save_history(&cfg.opponent_history_path, &app.opponent_history);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                crate::detect::tick_detection(app, &cfg, r);
 
                 if app.is_ready() && !app.profile_fetched {
                     if let (Some(api), Some(name), Some(gw)) = (&app.api, &app.self_profile_name, app.self_gateway) {
@@ -463,7 +227,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                     ));
                                 }
                                 app.last_profile_text = Some(out);
-                                app.self_profile_rating = compute_self_rating(&info, name);
+                                app.self_profile_rating = api.compute_rating_for_name(&info, name);
                                 
                                 app.own_profiles = info.profiles.iter().map(|p| p.toon.clone()).collect();
                                 // Fetch profile for stats
@@ -474,7 +238,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                                 }
                                 app.last_rating_poll = Some(Instant::now());
                                 app.profile_fetched = true;
-                                write_rating_output(&cfg, app);
+                                        overlay::write_rating(&cfg, app);
                             }
                             Err(err) => {
                                 app.last_profile_text = Some(format!("API error: {}", err));
@@ -485,7 +249,6 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                     }
                 }
 
-                // Search execution (blocking in tick, acceptable for now)
                 if app.search_in_progress {
                     app.search_in_progress = false;
                     app.search_error = None;
@@ -519,14 +282,14 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                     .into_iter()
                                     .map(|(toon, gw_num, rating)| format!("{} • {} • {}", toon, crate::api::gateway_label(gw_num), rating))
                                     .collect();
-                                // Only show matches if current season total games across buckets >= 5
+                                // Only show matches if current season total games across buckets >= threshold
                                 let eligible = guid.map(|g| {
                                     let season = info.matchmaked_current_season;
                                     info.matchmaked_stats
                                         .iter()
                                         .filter(|s| s.toon_guid == g && s.season_id == season)
                                         .fold(0u32, |acc, s| acc.saturating_add(s.wins + s.losses))
-                                }).map(|n| n >= 5).unwrap_or(false);
+                                }).map(|n| n >= crate::api::RATING_MIN_GAMES).unwrap_or(false);
                                 match api.get_scr_profile(&name, gw) {
                                     Ok(profile) => {
                                         // matches list only if eligible (>=5)
@@ -552,14 +315,14 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                             if let (Some(api), Some(name), Some(gw)) = (&app.api, &app.self_profile_name, app.self_gateway) {
                                 match api.get_toon_info(name, gw) {
                                     Ok(info) => {
-                                        app.self_profile_rating = compute_self_rating(&info, name);
+                                        app.self_profile_rating = api.compute_rating_for_name(&info, name);
                                         app.last_rating_poll = Some(Instant::now());
                                         if let Ok(profile) = api.get_scr_profile(name, gw) {
                                             let (mr, lines, _results) = api.profile_stats_last100(&profile, name);
                                             app.self_main_race = mr;
                                             app.self_matchups = lines;
                                         }
-                                        write_rating_output(&cfg, app);
+                                        overlay::write_rating(&cfg, app);
                                     }
                                     Err(_) => {
                                         // Still update the timestamp to avoid hammering on repeated failures
@@ -569,89 +332,10 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                             }
                         }
                     }
-                    // If screp is available, watch LastReplay.rep and process on change
-                    if app.screp_available {
-                        if let Ok(meta) = std::fs::metadata(&cfg.last_replay_path) {
-                            if let Ok(mtime) = meta.modified() {
-                                let changed = app.last_replay_processed_mtime.map_or(true, |p| mtime > p);
-                                if changed {
-                                    app.last_replay_mtime = Some(mtime);
-                                    if app.replay_changed_at.is_none() {
-                                        app.replay_changed_at = Some(Instant::now());
-                                    }
-                                }
-                            }
-                        }
-                        if let Some(start) = app.replay_changed_at {
-                            if start.elapsed() >= cfg.replay_settle {
-                                // Run screp -overview
-                                let output = Command::new(&cfg.screp_cmd)
-                                    .arg("-overview")
-                                    .arg(&cfg.last_replay_path)
-                                    .output();
-                                match output {
-                                    Ok(out) if out.status.success() => {
-                                        let text = String::from_utf8_lossy(&out.stdout).to_string();
-                                        let (winner, players) = parse_screp_overview(&text);
-                                        // Find self and opponent in players
-                                        if let (Some(self_name), Some(wlab)) = (&app.self_profile_name, winner) {
-                                            let mut self_team: Option<u8> = None;
-                                            let mut opp: Option<(u8, String)> = None;
-                                            // restrict to first two players (1v1 typical), else pick the one not self
-                                            for (team, _race, name) in players.iter() {
-                                                if name.eq_ignore_ascii_case(self_name) {
-                                                    self_team = Some(*team);
-                                                }
-                                            }
-                                            if let Some(st) = self_team {
-                                                // opponent is anyone in players with team != st; choose first
-                                                for (team, _race, name) in players.iter() {
-                                                    if *team != st { opp = Some((*team, name.clone())); break; }
-                                                }
-                                                if let Some((_ot, opp_name)) = opp {
-                                                    // Determine win/loss
-                                                    let win = wlab.to_ascii_lowercase().contains(&format!("team {}", st).to_ascii_lowercase());
-                                                    let key = opp_name.to_ascii_lowercase();
-                                                    let entry = app.opponent_history.entry(key.clone()).or_insert_with(|| OpponentRecord {
-                                                        name: opp_name.clone(), gateway: app.gateway.unwrap_or(0), race: None, current_rating: None, previous_rating: None, wins: 0, losses: 0, last_match_ts: None,
-                                                    });
-                                                    if let Some(mt) = app.last_replay_mtime { entry.last_match_ts = system_time_secs(mt); }
-                                                    if win { entry.wins = entry.wins.saturating_add(1); } else { entry.losses = entry.losses.saturating_add(1); }
-                                                    // Fill race if unknown from screp
-                                                    if entry.race.is_none() {
-                                                        // find opp row again to get race
-                                                        if let Some((_, race, _)) = players.iter().find(|(t, _, n)| *t != st && n.eq_ignore_ascii_case(&opp_name)) {
-                                                            entry.race = race.clone();
-                                                        }
-                                                    }
-                                                    save_history(&cfg.opponent_history_path, &app.opponent_history);
-                                                    
-                                                    // Refresh rating once per replay
-                                                    if let (Some(api), Some(name), Some(gw)) = (&app.api, &app.self_profile_name, app.self_gateway) {
-                                                        if let Ok(info) = api.get_toon_info(name, gw) {
-                                                            app.self_profile_rating = compute_self_rating(&info, name);
-                                                            // Update overlay file with new rating
-                                                            write_rating_output(&cfg, app);
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        // Mark processed
-                                        app.last_replay_processed_mtime = app.last_replay_mtime;
-                                    }
-                                    _ => {
-                                        // If screp fails repeatedly, we could disable screp_available; keep enabled but show error in debug
-                                        app.last_profile_text = Some("screp failed to parse LastReplay".to_string());
-                                    }
-                                }
-                                app.replay_changed_at = None;
-                            }
-                        }
-                    }
+                    crate::replay::tick_replay_and_rating_retry(app, &cfg);
                 }
                 // Update opponent overlay text once per tick after potential updates
-                write_opponent_output(&cfg, app);
+                overlay::write_opponent(&cfg, app);
 
                 if matches!(app.view, crate::app::View::Debug) {
                     if let Ok(list) = r.recent_keys(app.debug_window_secs, 20) {
