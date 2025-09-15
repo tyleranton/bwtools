@@ -146,13 +146,16 @@ pub fn render(frame: &mut ratatui::Frame, app: &mut App) {
                     .iter()
                     .find(|(t, _, _)| t.eq_ignore_ascii_case(name))
                     .map(|(_, _, r)| *r);
-                let mut head = match rating {
-                    Some(r) => format!("{} • {} • Rating {}", name, crate::api::gateway_label(gw), r),
-                    None => format!("{} • {}", name, crate::api::gateway_label(gw)),
-                };
+                let race_opt = app.opponent_race.clone();
+                let mut parts: Vec<String> = vec![
+                    format!("{}", name),
+                    crate::api::gateway_label(gw).to_string(),
+                ];
+                if let Some(race) = race_opt { parts.push(race); }
+                if let Some(r) = rating { parts.push(r.to_string()); }
+                let mut head = parts.join(" • ");
                 // Append history if present
-                let key = name.to_ascii_lowercase();
-                if let Some(rec) = app.opponent_history.get(&key) {
+                if let Some(rec) = app.opponent_history.get(&name.to_ascii_lowercase()) {
                     if rec.wins + rec.losses > 0 {
                         head.push_str(&format!(" • W-L {}-{}", rec.wins, rec.losses));
                     }
@@ -169,7 +172,7 @@ pub fn render(frame: &mut ratatui::Frame, app: &mut App) {
                     .filter(|(t, _, _)| !t.eq_ignore_ascii_case(name))
                 {
                     list_lines.push(Line::from(Span::raw(format!(
-                        "{} • {} • Rating {}",
+                        "{} • {} • {}",
                         toon,
                         crate::api::gateway_label(*gw2),
                         r
@@ -183,7 +186,7 @@ pub fn render(frame: &mut ratatui::Frame, app: &mut App) {
             } else {
                 for (toon, gw2, r) in app.opponent_toons_data.iter() {
                     list_lines.push(Line::from(Span::raw(format!(
-                        "{} • {} • Rating {}",
+                        "{} • {} • {}",
                         toon,
                         crate::api::gateway_label(*gw2),
                         r

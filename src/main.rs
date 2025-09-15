@@ -62,9 +62,8 @@ fn write_opponent_output(cfg: &Config, app: &mut App) {
     let name = match &app.profile_name { Some(n) => n.clone(), None => { return; } };
     // Race from history if known
     let race = app
-        .opponent_history
-        .get(&name.to_ascii_lowercase())
-        .and_then(|r| r.race.clone())
+        .opponent_race
+        .clone()
         .unwrap_or_else(|| "Unknown".to_string());
     // Rating from opponent_toons_data if present
     let rating_opt = app
@@ -73,7 +72,14 @@ fn write_opponent_output(cfg: &Config, app: &mut App) {
         .find(|(t, _, _)| t.eq_ignore_ascii_case(&name))
         .map(|(_, _, r)| *r);
     let rating_text = rating_opt.map(|r| r.to_string()).unwrap_or_else(|| "N/A".to_string());
-    let text = format!("{} • {} • {}", name, race, rating_text);
+    // Append W-L if we have any history
+    let wl_text = app
+        .opponent_history
+        .get(&name.to_ascii_lowercase())
+        .filter(|rec| rec.wins + rec.losses > 0)
+        .map(|rec| format!(" • W-L {}-{}", rec.wins, rec.losses))
+        .unwrap_or_default();
+    let text = format!("{} • {} • {}{}", name, race, rating_text, wl_text);
     if app.opponent_output_last_text.as_deref() == Some(text.as_str()) { return; }
     if let Some(parent) = cfg.opponent_output_path.parent() { let _ = fs::create_dir_all(parent); }
     let _ = fs::write(&cfg.opponent_output_path, &text);
@@ -208,10 +214,14 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                                     .iter()
                                                     .find(|(t, _, _)| t.eq_ignore_ascii_case(name))
                                                     .map(|(_, _, r)| *r);
-                                                let head_text = match rating {
-                                                    Some(r) => format!("{} • {} • Rating {}", name, crate::api::gateway_label(gw), r),
-                                                    None => format!("{} • {}", name, crate::api::gateway_label(gw)),
-                                                };
+                                                let race_opt = app.opponent_race.clone();
+                                                let mut parts: Vec<String> = vec![
+                                                    name.clone(),
+                                                    crate::api::gateway_label(gw).to_string(),
+                                                ];
+                                                if let Some(race) = race_opt { parts.push(race); }
+                                                if let Some(r) = rating { parts.push(r.to_string()); }
+                                                let head_text = parts.join(" • ");
                                                 let head_width = head_text.chars().count() as u16;
                                                 if x < rect.x + head_width {
                                                     app.view = crate::app::View::Search;
@@ -236,7 +246,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                             let sel = idx - 1;
                                             if sel < others.len() {
                                                 let display_text = format!(
-                                                    "{} • {} • Rating {}",
+                                                    "{} • {} • {}",
                                                     others[sel].0,
                                                     crate::api::gateway_label(others[sel].1),
                                                     others[sel].2
@@ -329,6 +339,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                     app.last_rating_poll = None;
                                     app.last_opponent_identity = None;
                                     app.opponent_toons.clear();
+                                    app.opponent_race = None;
                                     write_rating_output(&cfg, app);
                                 }
                             }
@@ -345,13 +356,20 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                 if let (Some(api), Some(opp_name), Some(opp_gw)) = (&app.api, &app.profile_name, app.gateway) {
                                     let identity = (opp_name.clone(), opp_gw);
                                     if app.last_opponent_identity.as_ref() != Some(&identity) {
+                                        // Reset derived opponent fields when identity changes
+                                        app.opponent_race = None;
                                         if let Ok(list) = api.opponent_toons_summary(opp_name, opp_gw) {
                                         app.opponent_toons_data = list.clone();
                                         app.opponent_toons = list
                                             .into_iter()
-                                            .map(|(toon, gw_num, rating)| format!("{} • {} • Rating {}", toon, crate::api::gateway_label(gw_num), rating))
+                                            .map(|(toon, gw_num, rating)| format!("{} • {} • {}", toon, crate::api::gateway_label(gw_num), rating))
                                             .collect();
                                             app.last_opponent_identity = Some(identity);
+                                        }
+                                        // Also fetch opponent profile to compute their main race like we do for self
+                                        if let Ok(profile) = api.get_scr_profile(opp_name, opp_gw) {
+                                            let (mr, _lines, _results) = api.profile_stats_last100(&profile, opp_name);
+                                            app.opponent_race = mr;
                                         }
                                         // Update opponent history with latest rating snapshot
                                         if let Ok(info) = api.get_toon_info(opp_name, opp_gw) {
@@ -449,11 +467,11 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                 
                                 app.own_profiles = info.profiles.iter().map(|p| p.toon.clone()).collect();
                                 // Fetch profile for stats
-                                if let Ok(profile) = api.get_scr_profile(name, gw) {
-                                    let (mr, lines, _results) = api.profile_stats_last100(&profile, name);
-                                    app.self_main_race = mr;
-                                    app.self_matchups = lines;
-                                }
+                                                if let Ok(profile) = api.get_scr_profile(name, gw) {
+                                                    let (mr, lines, _results) = api.profile_stats_last100(&profile, name);
+                                                    app.self_main_race = mr;
+                                                    app.self_matchups = lines;
+                                                }
                                 app.last_rating_poll = Some(Instant::now());
                                 app.profile_fetched = true;
                                 write_rating_output(&cfg, app);
@@ -499,7 +517,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                 app.search_other_toons_data = others.clone();
                                 app.search_other_toons = others
                                     .into_iter()
-                                    .map(|(toon, gw_num, rating)| format!("{} • {} • Rating {}", toon, crate::api::gateway_label(gw_num), rating))
+                                    .map(|(toon, gw_num, rating)| format!("{} • {} • {}", toon, crate::api::gateway_label(gw_num), rating))
                                     .collect();
                                 // Only show matches if current season total games across buckets >= 5
                                 let eligible = guid.map(|g| {
