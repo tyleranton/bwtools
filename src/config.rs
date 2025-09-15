@@ -15,6 +15,8 @@ pub struct Config {
     pub last_replay_path: PathBuf,
     pub screp_cmd: String,
     pub replay_settle: Duration,
+    pub opponent_output_enabled: bool,
+    pub opponent_output_path: PathBuf,
 }
 
 impl Default for Config {
@@ -32,6 +34,8 @@ impl Default for Config {
             last_replay_path: default_last_replay_path(),
             screp_cmd: default_screp_cmd(),
             replay_settle: Duration::from_millis(500),
+            opponent_output_enabled: true,
+            opponent_output_path: default_opponent_output_path(),
         }
     }
 }
@@ -102,3 +106,18 @@ fn default_last_replay_path() -> PathBuf {
 }
 
 fn default_screp_cmd() -> String { "screp".to_string() }
+
+fn default_opponent_output_path() -> PathBuf {
+    if cfg!(target_os = "windows") {
+        let home = env::var("USERPROFILE").unwrap_or_else(|_| String::from("."));
+        PathBuf::from(home)
+            .join("bwtools")
+            .join("overlay")
+            .join("opponent_info.txt")
+    } else {
+        let home = env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
+        home.join("bwtools")
+            .join("overlay")
+            .join("opponent_info.txt")
+    }
+}

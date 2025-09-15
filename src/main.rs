@@ -57,6 +57,29 @@ fn write_rating_output(cfg: &Config, app: &mut App) {
     app.rating_output_last_text = Some(text);
 }
 
+fn write_opponent_output(cfg: &Config, app: &mut App) {
+    if !cfg.opponent_output_enabled { return; }
+    let name = match &app.profile_name { Some(n) => n.clone(), None => { return; } };
+    // Race from history if known
+    let race = app
+        .opponent_history
+        .get(&name.to_ascii_lowercase())
+        .and_then(|r| r.race.clone())
+        .unwrap_or_else(|| "Unknown".to_string());
+    // Rating from opponent_toons_data if present
+    let rating_opt = app
+        .opponent_toons_data
+        .iter()
+        .find(|(t, _, _)| t.eq_ignore_ascii_case(&name))
+        .map(|(_, _, r)| *r);
+    let rating_text = rating_opt.map(|r| r.to_string()).unwrap_or_else(|| "N/A".to_string());
+    let text = format!("{} • {} • {}", name, race, rating_text);
+    if app.opponent_output_last_text.as_deref() == Some(text.as_str()) { return; }
+    if let Some(parent) = cfg.opponent_output_path.parent() { let _ = fs::create_dir_all(parent); }
+    let _ = fs::write(&cfg.opponent_output_path, &text);
+    app.opponent_output_last_text = Some(text);
+}
+
 fn parse_screp_overview(text: &str) -> (Option<String>, Vec<(u8, Option<String>, String)>) {
     // Returns (winner_team_label like "Team 1", players list of (team, race, name))
     let mut winner: Option<String> = None;
@@ -584,7 +607,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                                         }
                                                     }
                                                     save_history(&cfg.opponent_history_path, &app.opponent_history);
-
+                                                    
                                                     // Refresh rating once per replay
                                                     if let (Some(api), Some(name), Some(gw)) = (&app.api, &app.self_profile_name, app.self_gateway) {
                                                         if let Ok(info) = api.get_toon_info(name, gw) {
@@ -609,6 +632,8 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                         }
                     }
                 }
+                // Update opponent overlay text once per tick after potential updates
+                write_opponent_output(&cfg, app);
 
                 if matches!(app.view, crate::app::View::Debug) {
                     if let Ok(list) = r.recent_keys(app.debug_window_secs, 20) {

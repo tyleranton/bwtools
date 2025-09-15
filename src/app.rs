@@ -38,6 +38,7 @@ pub struct App {
     pub last_replay_mtime: Option<std::time::SystemTime>,
     pub last_replay_processed_mtime: Option<std::time::SystemTime>,
     pub replay_changed_at: Option<Instant>,
+    pub opponent_output_last_text: Option<String>,
     
     // Search view state
     pub search_name: String,
@@ -91,6 +92,7 @@ impl App {
             last_replay_mtime: None,
             last_replay_processed_mtime: None,
             replay_changed_at: None,
+            opponent_output_last_text: None,
             search_name: String::new(),
             search_gateway: 10,
             search_focus_gateway: false,
