@@ -15,6 +15,7 @@ mod input;
 mod overlay;
 mod profile;
 mod replay;
+mod replay_download;
 mod search;
 mod tui;
 mod ui;
@@ -23,9 +24,53 @@ use crate::app::App;
 use crate::cache::CacheReader;
 use crate::config::Config;
 use crate::history::load_history;
+use crate::replay_download::{ReplayDownloadRequest, ReplayStorage};
 use crate::tui::{install_panic_hook, restore_terminal, setup_terminal};
 use crate::ui::render;
 use std::path::Path;
+
+fn maybe_start_replay_download(app: &mut App, cfg: &Config) {
+    if !app.replay_should_start {
+        return;
+    }
+    app.replay_should_start = false;
+    if app.replay_in_progress {
+        app.replay_last_error = Some("Replay download already running".to_string());
+        return;
+    }
+    let toon = app.replay_toon_input.trim();
+    if toon.is_empty() {
+        app.replay_last_error = Some("Enter a profile name first".to_string());
+        return;
+    }
+    let port = app.port.or(app.last_port_used).unwrap_or_default();
+    if port == 0 {
+        app.replay_last_error = Some("No API port detected".to_string());
+        return;
+    }
+    let base_url = format!("http://127.0.0.1:{port}");
+    let request = ReplayDownloadRequest {
+        toon: toon.to_string(),
+        gateway: app.replay_input_gateway,
+        matchup: match app.replay_matchup_input.trim() {
+            "" => None,
+            other => Some(other.to_string()),
+        },
+        limit: app.replay_input_count.max(1) as usize,
+    };
+
+    if let Some(handle) = app.replay_job_handle.take() {
+        let _ = handle.join();
+    }
+    app.replay_last_error = None;
+    app.replay_last_summary = None;
+    app.replay_last_request = Some(request.clone());
+
+    let (handle, rx) = crate::replay_download::spawn_download_job(base_url, cfg.clone(), request);
+    app.replay_job_rx = Some(rx);
+    app.replay_job_handle = Some(handle);
+    app.replay_in_progress = true;
+}
 
 #[allow(clippy::collapsible_if)]
 fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> io::Result<()> {
@@ -34,6 +79,12 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
     let mut last_tick = Instant::now();
     let mut last_refresh = Instant::now();
     app.debug_window_secs = cfg.debug_window_secs;
+
+    let storage = ReplayStorage::new(cfg.replay_library_root.clone());
+    if let Err(err) = storage.ensure_base_dirs() {
+        app.last_profile_text = Some(format!("Replay dir error: {}", err));
+    }
+    app.replay_storage = Some(storage);
 
     // Load opponent history
     app.opponent_history = load_history(&cfg.opponent_history_path);
@@ -108,6 +159,8 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                     }
                 }
             }
+            maybe_start_replay_download(app, &cfg);
+            app.poll_replay_job();
             last_tick = Instant::now();
         }
     }

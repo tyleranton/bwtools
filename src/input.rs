@@ -27,6 +27,20 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
             KeyCode::Char('m') => {
                 app.view = crate::app::View::Main;
             }
+            KeyCode::Char('r') => {
+                app.view = crate::app::View::Replays;
+                if app.replay_toon_input.is_empty() {
+                    if let Some(name) = &app.self_profile_name {
+                        app.replay_toon_input = name.clone();
+                        app.replay_toon_cursor = app.replay_toon_input.chars().count();
+                    }
+                }
+                if let Some(gw) = app.self_gateway {
+                    app.replay_input_gateway = gw;
+                }
+                app.replay_focus = crate::app::ReplayFocus::Toon;
+                app.replay_last_error = None;
+            }
             KeyCode::Char('q') => {
                 app.should_quit = true;
             }
@@ -132,6 +146,7 @@ pub fn handle_mouse_event(app: &mut App, me: MouseEvent) {
                 }
             }
             crate::app::View::Debug => {}
+            crate::app::View::Replays => {}
         }
     }
 }

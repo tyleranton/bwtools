@@ -2,6 +2,7 @@ use std::env;
 use std::path::PathBuf;
 use std::time::Duration;
 
+#[derive(Clone)]
 pub struct Config {
     pub tick_rate: Duration,
     pub scan_window_secs: i64,
@@ -19,6 +20,7 @@ pub struct Config {
     pub opponent_output_path: PathBuf,
     pub rating_retry_max: u8,
     pub rating_retry_interval: Duration,
+    pub replay_library_root: PathBuf,
 }
 
 impl Default for Config {
@@ -40,6 +42,7 @@ impl Default for Config {
             opponent_output_path: default_opponent_output_path(),
             rating_retry_max: 3,
             rating_retry_interval: Duration::from_millis(500),
+            replay_library_root: default_replay_library_root(),
         }
     }
 }
@@ -131,5 +134,24 @@ fn default_opponent_output_path() -> PathBuf {
         home.join("bwtools")
             .join("overlay")
             .join("opponent_info.txt")
+    }
+}
+
+fn default_replay_library_root() -> PathBuf {
+    if cfg!(target_os = "windows") {
+        let home = env::var("USERPROFILE").unwrap_or_else(|_| String::from("."));
+        PathBuf::from(home)
+            .join("Documents")
+            .join("StarCraft")
+            .join("Maps")
+            .join("Replays")
+    } else {
+        let home = env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("."));
+        let user = env::var("USER").unwrap_or_else(|_| "default".to_string());
+        home.join(".wine-battlenet/drive_c/users")
+            .join(user)
+            .join("Documents/StarCraft/Maps/Replays")
     }
 }

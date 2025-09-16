@@ -1,5 +1,6 @@
 use anyhow::{Result, anyhow};
 use bw_web_api_rs::models::aurora_profile::{ScrMmGameLoading, ScrProfile, ScrToonInfo};
+use bw_web_api_rs::models::matchmaker_player_info::MatchmakerPlayerInfo;
 use bw_web_api_rs::{ApiClient, ApiConfig, types::Gateway};
 
 pub struct ApiHandle {
@@ -92,6 +93,12 @@ impl ApiHandle {
             .client
             .get_aurora_profile_by_toon_scr_profile(name.to_string(), gw);
         let data: ScrProfile = self.rt.block_on(fut)?;
+        Ok(data)
+    }
+
+    pub fn get_matchmaker_player_info(&self, match_id: &str) -> Result<MatchmakerPlayerInfo> {
+        let fut = self.client.get_matchmaker_player_info(match_id.to_string());
+        let data: MatchmakerPlayerInfo = self.rt.block_on(fut)?;
         Ok(data)
     }
 

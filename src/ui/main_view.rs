@@ -16,7 +16,7 @@ pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app:
         .split(area);
 
     let header = Paragraph::new(vec![Line::from(Span::raw(
-        "Ctrl+S Search  •  Ctrl+D Debug  •  Ctrl+Q/Esc Quit",
+        "Ctrl+S Search  •  Ctrl+D Debug  •  Ctrl+R Replays  •  Ctrl+Q/Esc Quit",
     ))])
     .alignment(Alignment::Left)
     .block(
