@@ -8,6 +8,7 @@ use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, anyhow};
+use chrono::{DateTime, Utc};
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 
@@ -159,6 +160,7 @@ pub fn download_replays(
     let matchup_filter = request.matchup.as_deref().and_then(parse_matchup_filter);
     let filtered = candidates
         .into_iter()
+        .filter(|replay| is_one_v_one(replay))
         .filter(|replay| match &matchup_filter {
             Some((a, b)) => replay_matches(&replay.attributes.replay_player_races, (*a, *b)),
             None => true,
@@ -293,7 +295,15 @@ fn process_replay(
     let (main_name, main_race, opp_name, opp_race) = extract_players(&overview, &request.toon)
         .ok_or_else(|| ReplayProcessError::Other(anyhow!("failed to parse players from screp")))?;
 
-    let file_name = build_filename(&main_name, &main_race, &opp_name, &opp_race);
+    let date_prefix = replay_date_prefix(best.create_time)
+        .or_else(|| replay_date_prefix(replay.create_time as u64));
+    let file_name = build_filename(
+        date_prefix.as_deref(),
+        &main_name,
+        &main_race,
+        &opp_name,
+        &opp_race,
+    );
     let mut final_path = target_dir.join(&file_name);
     let mut counter = 1;
     while final_path.exists() {
@@ -395,30 +405,26 @@ fn extract_players(overview: &str, target_toon: &str) -> Option<(String, String,
     }
 }
 
-fn build_filename(p1: &str, r1: &str, p2: &str, r2: &str) -> String {
-    format!(
-        "{}({})_vs_{}({}).rep",
+fn build_filename(prefix: Option<&str>, p1: &str, r1: &str, p2: &str, r2: &str) -> String {
+    let base = format!(
+        "{}({})_vs_{}({})",
         sanitize_component(p1),
-        sanitize_component(&capitalize_race(r1)),
+        sanitize_component(&race_letter(r1)),
         sanitize_component(p2),
-        sanitize_component(&capitalize_race(r2))
-    )
+        sanitize_component(&race_letter(r2))
+    );
+    match prefix {
+        Some(p) => format!("{}_{}.rep", sanitize_component(p), base),
+        None => format!("{}.rep", base),
+    }
 }
 
-fn capitalize_race(race: &str) -> String {
-    let lower = race.trim();
-    if lower.is_empty() {
-        return "Unknown".to_string();
-    }
-    let mut chars = lower.chars();
-    match chars.next() {
-        Some(first) => format!(
-            "{}{}",
-            first.to_ascii_uppercase(),
-            chars.as_str().to_ascii_lowercase()
-        ),
-        None => "Unknown".to_string(),
-    }
+fn race_letter(race: &str) -> String {
+    let trimmed = race.trim();
+    let Some(first) = trimmed.chars().next() else {
+        return "U".to_string();
+    };
+    first.to_ascii_uppercase().to_string()
 }
 
 fn sanitize_component(input: &str) -> String {
@@ -441,17 +447,18 @@ fn sanitize_component(input: &str) -> String {
 
 fn parse_matchup_filter(input: &str) -> Option<(char, char)> {
     let s = input.trim().to_ascii_uppercase();
-    if let Some((left, right)) = s.split_once('v') {
-        let a = left.chars().find(|c| c.is_ascii_alphabetic())?;
-        let b = right.chars().find(|c| c.is_ascii_alphabetic())?;
-        return Some((a, b));
+    let splitters = ['V', ',', '/'];
+    for sep in splitters {
+        if let Some((left, right)) = s.split_once(sep) {
+            let a = left.chars().find(|c| c.is_ascii_alphabetic())?;
+            let b = right.chars().find(|c| c.is_ascii_alphabetic())?;
+            return Some((a, b));
+        }
     }
-    if let Some((a, b)) = s.split_once(',') {
-        let ac = a.chars().next()?;
-        let bc = b.chars().next()?;
-        return Some((ac, bc));
-    }
-    None
+    let mut letters = s.chars().filter(|c| c.is_ascii_alphabetic());
+    let a = letters.next()?;
+    let b = letters.next()?;
+    Some((a, b))
 }
 
 fn replay_matches(races: &str, filter: (char, char)) -> bool {
@@ -476,4 +483,33 @@ fn current_timestamp() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or_default()
+}
+
+fn replay_date_prefix(ts_secs: u64) -> Option<String> {
+    if ts_secs == 0 || ts_secs == u32::MAX as u64 {
+        return None;
+    }
+    DateTime::<Utc>::from_timestamp(ts_secs as i64, 0).map(|dt| dt.format("%Y%m%d").to_string())
+}
+
+fn is_one_v_one(replay: &bw_web_api_rs::models::common::Replay) -> bool {
+    let names = split_non_empty(&replay.attributes.replay_player_names);
+    if names.len() != 2 {
+        return false;
+    }
+    let races = split_non_empty(&replay.attributes.replay_player_races);
+    if races.len() != 2 {
+        return false;
+    }
+    let types = split_non_empty(&replay.attributes.replay_player_types);
+    let human_count = types.iter().filter(|t| t.trim() == "1").count();
+    human_count == 2
+}
+
+fn split_non_empty(input: &str) -> Vec<&str> {
+    input
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect()
 }
