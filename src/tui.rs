@@ -1,12 +1,14 @@
 use std::io;
 
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
-use crossterm::event::DisableMouseCapture;
 use crossterm::cursor::{EnableBlinking, SetCursorStyle, Show};
+use crossterm::event::DisableMouseCapture;
 use crossterm::event::EnableMouseCapture;
-use crossterm::{execute, ExecutableCommand};
-use ratatui::backend::CrosstermBackend;
+use crossterm::terminal::{
+    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+};
+use crossterm::{ExecutableCommand, execute};
 use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
 
 pub fn setup_terminal() -> io::Result<Terminal<CrosstermBackend<io::Stdout>>> {
     enable_raw_mode()?;
@@ -23,7 +25,11 @@ pub fn setup_terminal() -> io::Result<Terminal<CrosstermBackend<io::Stdout>>> {
 
 pub fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), DisableMouseCapture, LeaveAlternateScreen)?;
+    execute!(
+        terminal.backend_mut(),
+        DisableMouseCapture,
+        LeaveAlternateScreen
+    )?;
     terminal.show_cursor()?;
     Ok(())
 }

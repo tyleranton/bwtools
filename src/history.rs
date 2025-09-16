@@ -22,7 +22,9 @@ pub fn load_history(path: &std::path::Path) -> OpponentHistory {
 }
 
 pub fn save_history(path: &std::path::Path, hist: &OpponentHistory) {
-    if let Some(parent) = path.parent() { let _ = std::fs::create_dir_all(parent); }
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
     if let Ok(data) = serde_json::to_vec_pretty(hist) {
         let _ = std::fs::write(path, data);
     }
@@ -47,7 +49,9 @@ pub fn derive_wl_and_race(
             .filter(|p| p.attributes.r#type == "player" && !p.toon.trim().is_empty())
             .collect();
 
-        if players.len() != 2 { continue; }
+        if players.len() != 2 {
+            continue;
+        }
 
         let mi = if players[0].toon.eq_ignore_ascii_case(self_name) {
             0
@@ -58,12 +62,18 @@ pub fn derive_wl_and_race(
         };
 
         let oi = 1 - mi;
-        if !players[oi].toon.eq_ignore_ascii_case(opp_name) { continue; }
+        if !players[oi].toon.eq_ignore_ascii_case(opp_name) {
+            continue;
+        }
 
         let ts = g.create_time.parse::<u64>().unwrap_or(0);
         let res = players[mi].result.to_ascii_lowercase();
-        if res == "win" { wins = wins.saturating_add(1); }
-        if res == "loss" { losses = losses.saturating_add(1); }
+        if res == "win" {
+            wins = wins.saturating_add(1);
+        }
+        if res == "loss" {
+            losses = losses.saturating_add(1);
+        }
 
         if ts > last_ts {
             last_ts = ts;

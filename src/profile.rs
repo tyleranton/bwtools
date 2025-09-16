@@ -3,7 +3,8 @@ use crate::config::Config;
 use crate::overlay;
 
 pub fn fetch_self_profile(app: &mut App, cfg: &Config) {
-    if let (Some(api), Some(name), Some(gw)) = (&app.api, &app.self_profile_name, app.self_gateway) {
+    if let (Some(api), Some(name), Some(gw)) = (&app.api, &app.self_profile_name, app.self_gateway)
+    {
         match api.get_toon_info(name, gw) {
             Ok(info) => {
                 let mut out = String::new();
@@ -41,12 +42,17 @@ pub fn fetch_self_profile(app: &mut App, cfg: &Config) {
 }
 
 pub fn poll_self_rating(app: &mut App, cfg: &Config) {
-    if app.screp_available { return; }
+    if app.screp_available {
+        return;
+    }
     let due = app
         .last_rating_poll
         .is_none_or(|t| t.elapsed() >= cfg.rating_poll_interval);
-    if !due { return; }
-    if let (Some(api), Some(name), Some(gw)) = (&app.api, &app.self_profile_name, app.self_gateway) {
+    if !due {
+        return;
+    }
+    if let (Some(api), Some(name), Some(gw)) = (&app.api, &app.self_profile_name, app.self_gateway)
+    {
         match api.get_toon_info(name, gw) {
             Ok(info) => {
                 app.self_profile_rating = api.compute_rating_for_name(&info, name);

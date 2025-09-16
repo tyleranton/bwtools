@@ -12,20 +12,48 @@ pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
         .split(area);
 
     let gw_label = crate::api::gateway_label(app.search_gateway);
-    let name_style = if app.search_focus_gateway { Style::default() } else { Style::default().add_modifier(Modifier::BOLD) };
-    let gw_style = if app.search_focus_gateway { Style::default().add_modifier(Modifier::BOLD) } else { Style::default() };
-    let name_prefix = if app.search_focus_gateway { "  " } else { "→ " };
-    let gw_prefix = if app.search_focus_gateway { "→ " } else { "  " };
+    let name_style = if app.search_focus_gateway {
+        Style::default()
+    } else {
+        Style::default().add_modifier(Modifier::BOLD)
+    };
+    let gw_style = if app.search_focus_gateway {
+        Style::default().add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+    };
+    let name_prefix = if app.search_focus_gateway {
+        "  "
+    } else {
+        "→ "
+    };
+    let gw_prefix = if app.search_focus_gateway {
+        "→ "
+    } else {
+        "  "
+    };
     let input_block = Block::default().borders(Borders::ALL).title(Span::styled(
         "Search Input",
-        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
     ));
     let input_inner = input_block.inner(rows[0]);
     let input = Paragraph::new(vec![
-        Line::from(Span::raw("Type name • Tab focus • ←/→ gateway • Enter search • Ctrl+M Main")),
+        Line::from(Span::raw(
+            "Type name • Tab focus • ←/→ gateway • Enter search • Ctrl+M Main",
+        )),
         Line::from(Span::raw("")),
-        Line::from(vec![Span::raw(name_prefix), Span::styled("Name: ", Style::default()), Span::styled(app.search_name.clone(), name_style)]),
-        Line::from(vec![Span::raw(gw_prefix), Span::styled("Gateway: ", Style::default()), Span::styled(format!("{} ({})", gw_label, app.search_gateway), gw_style)]),
+        Line::from(vec![
+            Span::raw(name_prefix),
+            Span::styled("Name: ", Style::default()),
+            Span::styled(app.search_name.clone(), name_style),
+        ]),
+        Line::from(vec![
+            Span::raw(gw_prefix),
+            Span::styled("Gateway: ", Style::default()),
+            Span::styled(format!("{} ({})", gw_label, app.search_gateway), gw_style),
+        ]),
     ])
     .alignment(Alignment::Left)
     .block(input_block);
@@ -34,16 +62,28 @@ pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
         let prefix_cols = 2u16;
         let label_cols = "Name: ".len() as u16;
         let name_cols = app.search_cursor.min(app.search_name.chars().count()) as u16;
-        let mut x = input_inner.x.saturating_add(prefix_cols).saturating_add(label_cols).saturating_add(name_cols);
-        let max_x = input_inner.x.saturating_add(input_inner.width.saturating_sub(1));
-        if x > max_x { x = max_x; }
+        let mut x = input_inner
+            .x
+            .saturating_add(prefix_cols)
+            .saturating_add(label_cols)
+            .saturating_add(name_cols);
+        let max_x = input_inner
+            .x
+            .saturating_add(input_inner.width.saturating_sub(1));
+        if x > max_x {
+            x = max_x;
+        }
         let y = input_inner.y.saturating_add(2);
         frame.set_cursor_position((x, y));
     }
 
     let body = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(7), Constraint::Length(6), Constraint::Min(0)])
+        .constraints([
+            Constraint::Length(7),
+            Constraint::Length(6),
+            Constraint::Min(0),
+        ])
         .split(rows[1]);
 
     let mut prof_lines: Vec<Line> = Vec::new();
@@ -66,7 +106,12 @@ pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
         prof_lines.push(Line::from(Span::raw(rate_text)));
         if let Some(ref r) = app.search_main_race {
             prof_lines.push(Line::from(vec![
-                Span::styled("Race: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Race: ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::raw(r.clone()),
             ]));
         }
@@ -74,7 +119,12 @@ pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
             for m in app.search_matchups.iter() {
                 if let Some((label, rest)) = m.split_once(':') {
                     prof_lines.push(Line::from(vec![
-                        Span::styled(label.trim(), Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                        Span::styled(
+                            label.trim(),
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD),
+                        ),
                         Span::raw(":"),
                         Span::raw(rest.to_string()),
                     ]));
@@ -90,23 +140,32 @@ pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
             )));
         }
     }
-    let profile_panel = Paragraph::new(prof_lines)
-        .alignment(Alignment::Left)
-        .block(Block::default().borders(Borders::ALL).title(Span::styled(
+    let profile_panel = Paragraph::new(prof_lines).alignment(Alignment::Left).block(
+        Block::default().borders(Borders::ALL).title(Span::styled(
             "Profile",
-            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
-        )));
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )),
+    );
     frame.render_widget(profile_panel, body[0]);
 
     let mut others: Vec<Line> = Vec::new();
     if app.search_other_toons.is_empty() {
-        others.push(Line::from(Span::styled("No other toons.", Style::default().fg(Color::DarkGray))));
+        others.push(Line::from(Span::styled(
+            "No other toons.",
+            Style::default().fg(Color::DarkGray),
+        )));
     } else {
-        for item in app.search_other_toons.iter().take(6) { others.push(Line::from(Span::raw(item.clone()))); }
+        for item in app.search_other_toons.iter().take(6) {
+            others.push(Line::from(Span::raw(item.clone())));
+        }
     }
     let others_block = Block::default().borders(Borders::ALL).title(Span::styled(
         "Other Toons",
-        Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(Color::Magenta)
+            .add_modifier(Modifier::BOLD),
     ));
     let others_inner = others_block.inner(body[1]);
     let others_panel = Paragraph::new(others)
@@ -118,18 +177,26 @@ pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
 
     let mut matches: Vec<Line> = Vec::new();
     if app.search_matches.is_empty() {
-        matches.push(Line::from(Span::styled("No recent matches.", Style::default().fg(Color::DarkGray))));
+        matches.push(Line::from(Span::styled(
+            "No recent matches.",
+            Style::default().fg(Color::DarkGray),
+        )));
     } else {
-        for m in app.search_matches.iter().take(30) { matches.push(Line::from(Span::raw(m.clone()))); }
+        for m in app.search_matches.iter().take(30) {
+            matches.push(Line::from(Span::raw(m.clone())));
+        }
     }
     let matches_panel = Paragraph::new(matches)
         .wrap(Wrap { trim: true })
         .scroll((app.search_matches_scroll, 0))
         .alignment(Alignment::Left)
-        .block(Block::default().borders(Borders::ALL).title(Span::styled(
-            "Recent Matches",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-        )));
+        .block(
+            Block::default().borders(Borders::ALL).title(Span::styled(
+                "Recent Matches",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )),
+        );
     frame.render_widget(matches_panel, body[2]);
 }
-

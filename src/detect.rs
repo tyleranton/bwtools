@@ -2,7 +2,7 @@
 use crate::app::App;
 use crate::cache::CacheReader;
 use crate::config::Config;
-use crate::history::{OpponentRecord, save_history, derive_wl_and_race};
+use crate::history::{OpponentRecord, derive_wl_and_race, save_history};
 use crate::overlay;
 
 pub fn tick_detection(app: &mut App, cfg: &Config, r: &mut CacheReader) {
@@ -14,7 +14,9 @@ pub fn tick_detection(app: &mut App, cfg: &Config, r: &mut CacheReader) {
 }
 
 fn detect_port(app: &mut App, cfg: &Config, r: &mut CacheReader) {
-    if app.port.is_some() { return; }
+    if app.port.is_some() {
+        return;
+    }
 
     if let Ok(port_opt) = r.parse_for_port(cfg.scan_window_secs) {
         if port_opt.is_some() {
@@ -24,7 +26,9 @@ fn detect_port(app: &mut App, cfg: &Config, r: &mut CacheReader) {
 }
 
 fn detect_self_bootstrap(app: &mut App, cfg: &Config, r: &mut CacheReader) {
-    if app.port.is_none() || app.self_profile_name.is_some() { return; }
+    if app.port.is_none() || app.self_profile_name.is_some() {
+        return;
+    }
 
     if let Ok(self_opt) = r.latest_self_profile(cfg.scan_window_secs) {
         if let Some((name, gw)) = self_opt {
@@ -46,7 +50,9 @@ fn init_api(app: &mut App) {
 }
 
 fn detect_self_switch(app: &mut App, cfg: &Config, r: &mut CacheReader) {
-    if !app.is_ready() { return; }
+    if !app.is_ready() {
+        return;
+    }
 
     if let Ok(self_mm_opt) = r.latest_mmgameloading_profile(cfg.scan_window_secs) {
         if let Some((mm_name, mm_gw)) = self_mm_opt {
@@ -68,13 +74,17 @@ fn detect_self_switch(app: &mut App, cfg: &Config, r: &mut CacheReader) {
 }
 
 fn detect_opponent(app: &mut App, cfg: &Config, r: &mut CacheReader) {
-    if !app.is_ready() { return; }
+    if !app.is_ready() {
+        return;
+    }
 
     let self_name = app.self_profile_name.as_deref();
     if let Ok(opt) = r.latest_opponent_profile(self_name, cfg.scan_window_secs) {
         if let Some((name, gw)) = opt {
             let is_own = app.own_profiles.contains(&name);
-            if is_own { return; }
+            if is_own {
+                return;
+            }
 
             app.profile_name = Some(name);
             app.gateway = Some(gw);
@@ -84,7 +94,9 @@ fn detect_opponent(app: &mut App, cfg: &Config, r: &mut CacheReader) {
             {
                 let identity = (opp_name.clone(), opp_gw);
                 let changed = app.last_opponent_identity.as_ref() != Some(&identity);
-                if !changed { return; }
+                if !changed {
+                    return;
+                }
 
                 app.opponent_race = None;
 
@@ -105,8 +117,7 @@ fn detect_opponent(app: &mut App, cfg: &Config, r: &mut CacheReader) {
                 }
 
                 if let Ok(profile) = api.get_scr_profile(opp_name, opp_gw) {
-                    let (mr, _lines, _results) =
-                        api.profile_stats_last100(&profile, opp_name);
+                    let (mr, _lines, _results) = api.profile_stats_last100(&profile, opp_name);
                     app.opponent_race = mr;
                 }
 
@@ -121,28 +132,27 @@ fn detect_opponent(app: &mut App, cfg: &Config, r: &mut CacheReader) {
                             info.matchmaked_stats
                                 .iter()
                                 .find(|s| {
-                                    s.season_id == season
-                                        && s.toon.eq_ignore_ascii_case(opp_name)
+                                    s.season_id == season && s.toon.eq_ignore_ascii_case(opp_name)
                                 })
                                 .map(|s| s.toon_guid)
                         });
-                    let rating = guid
-                        .and_then(|g| api.compute_rating_for_guid(&info, g));
+                    let rating = guid.and_then(|g| api.compute_rating_for_guid(&info, g));
 
                     let key = opp_name.to_ascii_lowercase();
                     let is_new = !app.opponent_history.contains_key(&key);
-                    let entry = app.opponent_history
-                        .entry(key.clone())
-                        .or_insert_with(|| OpponentRecord {
-                            name: opp_name.clone(),
-                            gateway: opp_gw,
-                            race: None,
-                            current_rating: None,
-                            previous_rating: None,
-                            wins: 0,
-                            losses: 0,
-                            last_match_ts: None,
-                        });
+                    let entry =
+                        app.opponent_history
+                            .entry(key.clone())
+                            .or_insert_with(|| OpponentRecord {
+                                name: opp_name.clone(),
+                                gateway: opp_gw,
+                                race: None,
+                                current_rating: None,
+                                previous_rating: None,
+                                wins: 0,
+                                losses: 0,
+                                last_match_ts: None,
+                            });
 
                     entry.name = opp_name.clone();
                     entry.gateway = opp_gw;
@@ -155,11 +165,8 @@ fn detect_opponent(app: &mut App, cfg: &Config, r: &mut CacheReader) {
                             (&app.self_profile_name, app.self_gateway)
                         {
                             if let Ok(profile) = api.get_scr_profile(self_name, self_gw) {
-                                let (w, l, ts, race) = derive_wl_and_race(
-                                    &profile,
-                                    self_name,
-                                    opp_name,
-                                );
+                                let (w, l, ts, race) =
+                                    derive_wl_and_race(&profile, self_name, opp_name);
                                 entry.wins = w;
                                 entry.losses = l;
                                 entry.last_match_ts = ts;

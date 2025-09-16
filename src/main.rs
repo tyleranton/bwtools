@@ -2,36 +2,33 @@ use std::io;
 use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event};
-use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
 
-mod app;
 mod api;
-mod config;
+mod app;
 mod cache;
+mod config;
+mod detect;
 mod history;
-mod tui;
-mod ui;
-mod search;
-mod profile;
 mod input;
 mod overlay;
+mod profile;
 mod replay;
-mod detect;
+mod search;
+mod tui;
+mod ui;
 
 use crate::app::App;
 use crate::cache::CacheReader;
 use crate::config::Config;
 use crate::history::load_history;
-use std::path::Path;
-use crate::tui::{restore_terminal, setup_terminal, install_panic_hook};
+use crate::tui::{install_panic_hook, restore_terminal, setup_terminal};
 use crate::ui::render;
+use std::path::Path;
 
 #[allow(clippy::collapsible_if)]
-fn run_app(
-    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    app: &mut App,
-) -> io::Result<()> {
+fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> io::Result<()> {
     let cfg: Config = Default::default();
     let tick_rate = cfg.tick_rate;
     let mut last_tick = Instant::now();
@@ -50,7 +47,8 @@ fn run_app(
     };
 
     // Initialize screp availability and baseline replay mtime
-    app.screp_available = which::which(&cfg.screp_cmd).is_ok() && Path::new(&cfg.last_replay_path).exists();
+    app.screp_available =
+        which::which(&cfg.screp_cmd).is_ok() && Path::new(&cfg.last_replay_path).exists();
     if let Ok(meta) = std::fs::metadata(&cfg.last_replay_path) {
         app.last_replay_mtime = meta.modified().ok();
         app.last_replay_processed_mtime = app.last_replay_mtime;
@@ -65,8 +63,12 @@ fn run_app(
 
         if event::poll(timeout)? {
             match event::read()? {
-                Event::Key(key) => { crate::input::handle_key_event(app, key); }
-                Event::Mouse(me) => { crate::input::handle_mouse_event(app, me); }
+                Event::Key(key) => {
+                    crate::input::handle_key_event(app, key);
+                }
+                Event::Mouse(me) => {
+                    crate::input::handle_mouse_event(app, me);
+                }
                 _ => {}
             }
         }
@@ -117,7 +119,7 @@ fn main() -> io::Result<()> {
     install_panic_hook();
     let mut terminal = setup_terminal()?;
     let res = {
-        let mut app = App::new();
+        let mut app = App::default();
         run_app(&mut terminal, &mut app)
     };
     let _ = restore_terminal(&mut terminal);

@@ -54,7 +54,9 @@ fn default_cache_dir() -> PathBuf {
             .join("blizzard_browser_cache");
     }
 
-    let home = env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("~"));
+    let home = env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("~"));
     let user = env::var("USER").unwrap_or_else(|_| "default".to_string());
     home.join(".wine-battlenet/drive_c/users")
         .join(user)
@@ -69,10 +71,10 @@ fn default_rating_output_path() -> PathBuf {
             .join("overlay")
             .join("self_rating.txt")
     } else {
-        let home = env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
-        home.join("bwtools")
-            .join("overlay")
-            .join("self_rating.txt")
+        let home = env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("."));
+        home.join("bwtools").join("overlay").join("self_rating.txt")
     }
 }
 
@@ -84,10 +86,10 @@ fn default_history_path() -> PathBuf {
             .join("history")
             .join("opponents.json")
     } else {
-        let home = env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
-        home.join("bwtools")
-            .join("history")
-            .join("opponents.json")
+        let home = env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("."));
+        home.join("bwtools").join("history").join("opponents.json")
     }
 }
 
@@ -101,7 +103,9 @@ fn default_last_replay_path() -> PathBuf {
             .join("Replays")
             .join("LastReplay.rep")
     } else {
-        let home = env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
+        let home = env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("."));
         let user = env::var("USER").unwrap_or_else(|_| "default".to_string());
         home.join(".wine-battlenet/drive_c/users")
             .join(user)
@@ -109,7 +113,9 @@ fn default_last_replay_path() -> PathBuf {
     }
 }
 
-fn default_screp_cmd() -> String { "screp".to_string() }
+fn default_screp_cmd() -> String {
+    "screp".to_string()
+}
 
 fn default_opponent_output_path() -> PathBuf {
     if cfg!(target_os = "windows") {
@@ -119,7 +125,9 @@ fn default_opponent_output_path() -> PathBuf {
             .join("overlay")
             .join("opponent_info.txt")
     } else {
-        let home = env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
+        let home = env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("."));
         home.join("bwtools")
             .join("overlay")
             .join("opponent_info.txt")

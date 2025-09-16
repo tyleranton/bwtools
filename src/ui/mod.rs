@@ -1,11 +1,11 @@
 use ratatui::layout::{Constraint, Direction, Layout};
 
-mod status;
+mod debug_view;
+mod display;
 mod footer;
 mod main_view;
-mod debug_view;
 mod search_view;
-mod display;
+mod status;
 
 use crate::app::{App, View};
 

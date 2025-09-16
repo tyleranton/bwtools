@@ -1,8 +1,8 @@
 use crate::api::ApiHandle;
 use crate::history::OpponentRecord;
-use std::time::Instant;
-use std::collections::{HashSet, HashMap};
 use ratatui::layout::Rect;
+use std::collections::{HashMap, HashSet};
+use std::time::Instant;
 
 pub enum View {
     Main,
@@ -44,7 +44,7 @@ pub struct App {
     pub rating_retry_retries: u8,
     pub rating_retry_next_at: Option<Instant>,
     pub rating_retry_baseline: Option<u32>,
-    
+
     // Search view state
     pub search_name: String,
     pub search_gateway: u16,
@@ -69,60 +69,6 @@ pub struct App {
 }
 
 impl App {
-    pub fn new() -> Self {
-        Self {
-            should_quit: false,
-            port: None,
-            profile_name: None,
-            gateway: None,
-            self_profile_name: None,
-            self_gateway: None,
-            self_profile_rating: None,
-            debug_recent: Vec::new(),
-            view: View::Main,
-            debug_window_secs: 10,
-            api: None,
-            last_port_used: None,
-            profile_fetched: false,
-            last_profile_text: None,
-            debug_scroll: 0,
-            opponent_toons: Vec::new(),
-            opponent_toons_data: Vec::new(),
-            last_opponent_identity: None,
-            opponent_race: None,
-            own_profiles: HashSet::new(),
-            last_rating_poll: None,
-            rating_output_last_text: None,
-            opponent_history: HashMap::new(),
-            screp_available: false,
-            last_replay_mtime: None,
-            last_replay_processed_mtime: None,
-            replay_changed_at: None,
-            opponent_output_last_text: None,
-            rating_retry_retries: 0,
-            rating_retry_next_at: None,
-            rating_retry_baseline: None,
-            search_name: String::new(),
-            search_gateway: 10,
-            search_focus_gateway: false,
-            search_in_progress: false,
-            search_rating: None,
-            search_other_toons: Vec::new(),
-            search_other_toons_data: Vec::new(),
-            search_matches: Vec::new(),
-            search_error: None,
-            search_matches_scroll: 0,
-            search_cursor: 0,
-            search_main_race: None,
-            search_matchups: Vec::new(),
-            status_opponent_rect: None,
-            main_opponent_toons_rect: None,
-            search_other_toons_rect: None,
-            self_main_race: None,
-            self_matchups: Vec::new(),
-        }
-    }
-
     pub fn reset_opponent_state(&mut self) {
         self.profile_name = None;
         self.gateway = None;
@@ -131,6 +77,16 @@ impl App {
         self.last_opponent_identity = None;
         self.opponent_race = None;
         self.opponent_output_last_text = None;
+    }
+
+    pub fn begin_search(&mut self, name: String, gateway: u16) {
+        self.view = View::Search;
+        self.search_name = name;
+        self.search_gateway = gateway;
+        self.search_focus_gateway = false;
+        self.search_cursor = self.search_name.chars().count();
+        self.search_matches_scroll = 0;
+        self.search_in_progress = true;
     }
 
     #[allow(clippy::collapsible_if)]
@@ -142,21 +98,32 @@ impl App {
                     self.search_focus_gateway = !self.search_focus_gateway;
                 }
                 crossterm::event::KeyCode::Left => {
-                    if self.search_focus_gateway { self.gateway_prev(); }
-                    else if self.search_cursor > 0 { self.search_cursor -= 1; }
+                    if self.search_focus_gateway {
+                        self.gateway_prev();
+                    } else if self.search_cursor > 0 {
+                        self.search_cursor -= 1;
+                    }
                 }
                 crossterm::event::KeyCode::Right => {
-                    if self.search_focus_gateway { self.gateway_next(); }
-                    else {
+                    if self.search_focus_gateway {
+                        self.gateway_next();
+                    } else {
                         let len = self.search_name.chars().count();
-                        if self.search_cursor < len { self.search_cursor += 1; }
+                        if self.search_cursor < len {
+                            self.search_cursor += 1;
+                        }
                     }
                 }
                 crossterm::event::KeyCode::Backspace => {
                     if !self.search_focus_gateway {
                         if self.search_cursor > 0 {
-                            let before: String = self.search_name.chars().take(self.search_cursor - 1).collect();
-                            let after: String = self.search_name.chars().skip(self.search_cursor).collect();
+                            let before: String = self
+                                .search_name
+                                .chars()
+                                .take(self.search_cursor - 1)
+                                .collect();
+                            let after: String =
+                                self.search_name.chars().skip(self.search_cursor).collect();
                             self.search_name = before + &after;
                             self.search_cursor -= 1;
                             self.clamp_search_cursor();
@@ -169,17 +136,26 @@ impl App {
                     self.search_matches_scroll = 0;
                 }
                 crossterm::event::KeyCode::Home => {
-                    if !self.search_focus_gateway { self.search_cursor = 0; }
+                    if !self.search_focus_gateway {
+                        self.search_cursor = 0;
+                    }
                 }
                 crossterm::event::KeyCode::End => {
-                    if !self.search_focus_gateway { self.search_cursor = self.search_name.chars().count(); }
+                    if !self.search_focus_gateway {
+                        self.search_cursor = self.search_name.chars().count();
+                    }
                 }
                 crossterm::event::KeyCode::Delete => {
                     if !self.search_focus_gateway {
                         let len = self.search_name.chars().count();
                         if self.search_cursor < len {
-                            let before: String = self.search_name.chars().take(self.search_cursor).collect();
-                            let after: String = self.search_name.chars().skip(self.search_cursor + 1).collect();
+                            let before: String =
+                                self.search_name.chars().take(self.search_cursor).collect();
+                            let after: String = self
+                                .search_name
+                                .chars()
+                                .skip(self.search_cursor + 1)
+                                .collect();
                             self.search_name = before + &after;
                         }
                     }
@@ -190,8 +166,10 @@ impl App {
                         if self.search_cursor >= len {
                             self.search_name.push(c);
                         } else {
-                            let before: String = self.search_name.chars().take(self.search_cursor).collect();
-                            let after: String = self.search_name.chars().skip(self.search_cursor).collect();
+                            let before: String =
+                                self.search_name.chars().take(self.search_cursor).collect();
+                            let after: String =
+                                self.search_name.chars().skip(self.search_cursor).collect();
                             self.search_name = before + &c.to_string() + &after;
                         }
                         self.search_cursor += 1;
@@ -262,19 +240,89 @@ impl App {
     }
 }
 
+impl Default for App {
+    fn default() -> Self {
+        Self {
+            should_quit: false,
+            port: None,
+            profile_name: None,
+            gateway: None,
+            self_profile_name: None,
+            self_gateway: None,
+            self_profile_rating: None,
+            debug_recent: Vec::new(),
+            view: View::Main,
+            debug_window_secs: 10,
+            api: None,
+            last_port_used: None,
+            profile_fetched: false,
+            last_profile_text: None,
+            debug_scroll: 0,
+            opponent_toons: Vec::new(),
+            opponent_toons_data: Vec::new(),
+            last_opponent_identity: None,
+            opponent_race: None,
+            own_profiles: HashSet::new(),
+            last_rating_poll: None,
+            rating_output_last_text: None,
+            opponent_history: HashMap::new(),
+            screp_available: false,
+            last_replay_mtime: None,
+            last_replay_processed_mtime: None,
+            replay_changed_at: None,
+            opponent_output_last_text: None,
+            rating_retry_retries: 0,
+            rating_retry_next_at: None,
+            rating_retry_baseline: None,
+            search_name: String::new(),
+            search_gateway: 10,
+            search_focus_gateway: false,
+            search_in_progress: false,
+            search_rating: None,
+            search_other_toons: Vec::new(),
+            search_other_toons_data: Vec::new(),
+            search_matches: Vec::new(),
+            search_error: None,
+            search_matches_scroll: 0,
+            search_cursor: 0,
+            search_main_race: None,
+            search_matchups: Vec::new(),
+            status_opponent_rect: None,
+            main_opponent_toons_rect: None,
+            search_other_toons_rect: None,
+            self_main_race: None,
+            self_matchups: Vec::new(),
+        }
+    }
+}
+
 impl App {
     pub fn is_ready(&self) -> bool {
         self.port.is_some() && self.self_profile_name.is_some()
     }
 
     pub fn gateway_next(&mut self) {
-        self.search_gateway = match self.search_gateway { 10 => 11, 11 => 20, 20 => 30, 30 => 45, _ => 10 };
+        self.search_gateway = match self.search_gateway {
+            10 => 11,
+            11 => 20,
+            20 => 30,
+            30 => 45,
+            _ => 10,
+        };
     }
     pub fn gateway_prev(&mut self) {
-        self.search_gateway = match self.search_gateway { 11 => 10, 20 => 11, 30 => 20, 45 => 30, _ => 45 };
+        self.search_gateway = match self.search_gateway {
+            11 => 10,
+            20 => 11,
+            30 => 20,
+            45 => 30,
+            _ => 45,
+        };
     }
     pub fn clamp_search_cursor(&mut self) {
         let len = self.search_name.chars().count();
-        if self.search_cursor > len { self.search_cursor = len; }
+        if self.search_cursor > len {
+            self.search_cursor = len;
+        }
     }
 }
