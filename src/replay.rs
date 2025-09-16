@@ -40,30 +40,33 @@ pub fn parse_screp_overview(text: &str) -> (Option<String>, Vec<(u8, Option<Stri
 
 pub fn parse_screp_duration_seconds(text: &str) -> Option<u32> {
     for line in text.lines() {
-        if line.to_ascii_lowercase().contains("duration") {
-            let value = line.split_once(':').map(|(_, rest)| rest).unwrap_or(line);
-            let trimmed = value.trim();
-            let parts: Vec<&str> = trimmed.split(':').collect();
-            if parts.len() >= 2 {
-                let hours_offset = if parts.len() == 3 { 1 } else { 0 };
-                let minutes_idx = if parts.len() == 3 { 1 } else { 0 };
-                let seconds_idx = if parts.len() == 3 { 2 } else { 1 };
-                let hours = if hours_offset == 1 {
-                    parts[0].trim().parse::<u32>().ok().unwrap_or(0)
-                } else {
-                    0
-                };
-                if let (Ok(minutes), Ok(seconds)) = (
-                    parts[minutes_idx].trim().parse::<u32>(),
-                    parts[seconds_idx]
-                        .split_whitespace()
-                        .next()
-                        .unwrap_or("0")
-                        .parse::<u32>(),
-                ) {
-                    return Some(hours * 3600 + minutes * 60 + seconds);
-                }
-            }
+        let lower = line.to_ascii_lowercase();
+        if !lower.contains("length") {
+            continue;
+        }
+        let value = line.split_once(':').map(|(_, rest)| rest).unwrap_or(line);
+        let trimmed = value.trim();
+        let parts: Vec<&str> = trimmed.split(':').collect();
+        if parts.len() < 2 {
+            continue;
+        }
+        let hours_offset = if parts.len() == 3 { 1 } else { 0 };
+        let minutes_idx = if parts.len() == 3 { 1 } else { 0 };
+        let seconds_idx = if parts.len() == 3 { 2 } else { 1 };
+        let hours = if hours_offset == 1 {
+            parts[0].trim().parse::<u32>().ok().unwrap_or(0)
+        } else {
+            0
+        };
+        if let (Ok(minutes), Ok(seconds)) = (
+            parts[minutes_idx].trim().parse::<u32>(),
+            parts[seconds_idx]
+                .split_whitespace()
+                .next()
+                .unwrap_or("0")
+                .parse::<u32>(),
+        ) {
+            return Some(hours * 3600 + minutes * 60 + seconds);
         }
     }
     None

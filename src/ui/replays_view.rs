@@ -8,7 +8,7 @@ use crate::app::{App, ReplayFocus};
 pub fn render_replays(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(8), Constraint::Min(0)])
+        .constraints([Constraint::Length(9), Constraint::Min(0)])
         .split(area);
 
     let focus_indicator = |focus: ReplayFocus, target: ReplayFocus| {
@@ -32,6 +32,25 @@ pub fn render_replays(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
                 Style::default()
             },
         ),
+    ]));
+
+    let alias_focused = matches!(app.replay_focus, ReplayFocus::Alias);
+    let alias_display = if app.replay_alias_input.is_empty() && !alias_focused {
+        Span::styled("(optional)", Style::default().fg(Color::DarkGray))
+    } else {
+        Span::styled(
+            app.replay_alias_input.clone(),
+            if alias_focused {
+                Style::default().add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            },
+        )
+    };
+    info_lines.push(Line::from(vec![
+        Span::raw(focus_indicator(app.replay_focus, ReplayFocus::Alias)),
+        Span::styled("Alias: ", Style::default()),
+        alias_display,
     ]));
 
     info_lines.push(Line::from(vec![
@@ -157,7 +176,11 @@ pub fn render_replays(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
         summary_lines.push(Line::from(Span::raw("")));
         summary_lines.push(Line::from(Span::styled(
             format!(
-                "Last request: {} @ {} ({})",
+                "Last request: {}{} @ {} ({})",
+                req.alias
+                    .as_ref()
+                    .map(|alias| format!("{} ➜ ", alias))
+                    .unwrap_or_default(),
                 req.toon,
                 crate::api::gateway_label(req.gateway),
                 req.matchup.clone().unwrap_or_else(|| "All".to_string())
@@ -184,10 +207,14 @@ pub fn render_replays(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
         let cursor_x = input_inner.x + 2 + "Profile: ".len() as u16 + app.replay_toon_cursor as u16;
         let cursor_y = input_inner.y + 2;
         frame.set_cursor_position((cursor_x, cursor_y));
+    } else if matches!(app.replay_focus, ReplayFocus::Alias) {
+        let cursor_x = input_inner.x + 2 + "Alias: ".len() as u16 + app.replay_alias_cursor as u16;
+        let cursor_y = input_inner.y + 3;
+        frame.set_cursor_position((cursor_x, cursor_y));
     } else if matches!(app.replay_focus, ReplayFocus::Matchup) {
         let cursor_x =
             input_inner.x + 2 + "Matchup: ".len() as u16 + app.replay_matchup_cursor as u16;
-        let cursor_y = input_inner.y + 4;
+        let cursor_y = input_inner.y + 5;
         frame.set_cursor_position((cursor_x, cursor_y));
     }
 }

@@ -57,6 +57,10 @@ fn maybe_start_replay_download(app: &mut App, cfg: &Config) {
             other => Some(other.to_string()),
         },
         limit: app.replay_input_count.max(1) as usize,
+        alias: match app.replay_alias_input.trim() {
+            "" => None,
+            other => Some(other.to_string()),
+        },
     };
 
     if let Some(handle) = app.replay_job_handle.take() {

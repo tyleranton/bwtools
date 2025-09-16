@@ -17,6 +17,7 @@ pub enum View {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ReplayFocus {
     Toon,
+    Alias,
     Gateway,
     Matchup,
     Count,
@@ -62,6 +63,8 @@ pub struct App {
     pub replay_toon_cursor: usize,
     pub replay_matchup_input: String,
     pub replay_matchup_cursor: usize,
+    pub replay_alias_input: String,
+    pub replay_alias_cursor: usize,
     pub replay_input_gateway: u16,
     pub replay_input_count: u16,
     pub replay_in_progress: bool,
@@ -122,16 +125,31 @@ impl App {
             match code {
                 crossterm::event::KeyCode::Tab => {
                     self.replay_focus = match self.replay_focus {
-                        ReplayFocus::Toon => ReplayFocus::Gateway,
+                        ReplayFocus::Toon => ReplayFocus::Alias,
+                        ReplayFocus::Alias => ReplayFocus::Gateway,
                         ReplayFocus::Gateway => ReplayFocus::Matchup,
                         ReplayFocus::Matchup => ReplayFocus::Count,
                         ReplayFocus::Count => ReplayFocus::Toon,
+                    };
+                }
+                crossterm::event::KeyCode::BackTab => {
+                    self.replay_focus = match self.replay_focus {
+                        ReplayFocus::Toon => ReplayFocus::Count,
+                        ReplayFocus::Alias => ReplayFocus::Toon,
+                        ReplayFocus::Gateway => ReplayFocus::Alias,
+                        ReplayFocus::Matchup => ReplayFocus::Gateway,
+                        ReplayFocus::Count => ReplayFocus::Matchup,
                     };
                 }
                 crossterm::event::KeyCode::Left => match self.replay_focus {
                     ReplayFocus::Toon => {
                         if self.replay_toon_cursor > 0 {
                             self.replay_toon_cursor -= 1;
+                        }
+                    }
+                    ReplayFocus::Alias => {
+                        if self.replay_alias_cursor > 0 {
+                            self.replay_alias_cursor -= 1;
                         }
                     }
                     ReplayFocus::Gateway => {
@@ -153,6 +171,12 @@ impl App {
                         let len = self.replay_toon_input.chars().count();
                         if self.replay_toon_cursor < len {
                             self.replay_toon_cursor += 1;
+                        }
+                    }
+                    ReplayFocus::Alias => {
+                        let len = self.replay_alias_input.chars().count();
+                        if self.replay_alias_cursor < len {
+                            self.replay_alias_cursor += 1;
                         }
                     }
                     ReplayFocus::Gateway => {
@@ -184,6 +208,9 @@ impl App {
                     ReplayFocus::Toon => {
                         self.replay_toon_cursor = 0;
                     }
+                    ReplayFocus::Alias => {
+                        self.replay_alias_cursor = 0;
+                    }
                     ReplayFocus::Matchup => {
                         self.replay_matchup_cursor = 0;
                     }
@@ -192,6 +219,9 @@ impl App {
                 crossterm::event::KeyCode::End => match self.replay_focus {
                     ReplayFocus::Toon => {
                         self.replay_toon_cursor = self.replay_toon_input.chars().count();
+                    }
+                    ReplayFocus::Alias => {
+                        self.replay_alias_cursor = self.replay_alias_input.chars().count();
                     }
                     ReplayFocus::Matchup => {
                         self.replay_matchup_cursor = self.replay_matchup_input.chars().count();
@@ -213,6 +243,22 @@ impl App {
                                 .collect();
                             self.replay_toon_input = before + &after;
                             self.replay_toon_cursor -= 1;
+                        }
+                    }
+                    ReplayFocus::Alias => {
+                        if self.replay_alias_cursor > 0 {
+                            let before: String = self
+                                .replay_alias_input
+                                .chars()
+                                .take(self.replay_alias_cursor - 1)
+                                .collect();
+                            let after: String = self
+                                .replay_alias_input
+                                .chars()
+                                .skip(self.replay_alias_cursor)
+                                .collect();
+                            self.replay_alias_input = before + &after;
+                            self.replay_alias_cursor -= 1;
                         }
                     }
                     ReplayFocus::Matchup => {
@@ -248,6 +294,22 @@ impl App {
                                 .skip(self.replay_toon_cursor + 1)
                                 .collect();
                             self.replay_toon_input = before + &after;
+                        }
+                    }
+                    ReplayFocus::Alias => {
+                        let len = self.replay_alias_input.chars().count();
+                        if self.replay_alias_cursor < len {
+                            let before: String = self
+                                .replay_alias_input
+                                .chars()
+                                .take(self.replay_alias_cursor)
+                                .collect();
+                            let after: String = self
+                                .replay_alias_input
+                                .chars()
+                                .skip(self.replay_alias_cursor + 1)
+                                .collect();
+                            self.replay_alias_input = before + &after;
                         }
                     }
                     ReplayFocus::Matchup => {
@@ -287,6 +349,25 @@ impl App {
                             self.replay_toon_input = before + &c.to_string() + &after;
                         }
                         self.replay_toon_cursor += 1;
+                    }
+                    ReplayFocus::Alias => {
+                        let len = self.replay_alias_input.chars().count();
+                        if self.replay_alias_cursor >= len {
+                            self.replay_alias_input.push(c);
+                        } else {
+                            let before: String = self
+                                .replay_alias_input
+                                .chars()
+                                .take(self.replay_alias_cursor)
+                                .collect();
+                            let after: String = self
+                                .replay_alias_input
+                                .chars()
+                                .skip(self.replay_alias_cursor)
+                                .collect();
+                            self.replay_alias_input = before + &c.to_string() + &after;
+                        }
+                        self.replay_alias_cursor += 1;
                     }
                     ReplayFocus::Matchup => {
                         let len = self.replay_matchup_input.chars().count();
@@ -512,6 +593,8 @@ impl Default for App {
             replay_toon_cursor: 0,
             replay_matchup_input: String::new(),
             replay_matchup_cursor: 0,
+            replay_alias_input: String::new(),
+            replay_alias_cursor: 0,
             replay_input_gateway: 10,
             replay_input_count: 5,
             replay_in_progress: false,
@@ -597,6 +680,10 @@ impl App {
         let len = self.replay_toon_input.chars().count();
         if self.replay_toon_cursor > len {
             self.replay_toon_cursor = len;
+        }
+        let len_a = self.replay_alias_input.chars().count();
+        if self.replay_alias_cursor > len_a {
+            self.replay_alias_cursor = len_a;
         }
         let len_m = self.replay_matchup_input.chars().count();
         if self.replay_matchup_cursor > len_m {

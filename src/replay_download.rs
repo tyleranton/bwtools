@@ -59,6 +59,7 @@ pub struct ReplayDownloadRequest {
     pub gateway: u16,
     pub matchup: Option<String>,
     pub limit: usize,
+    pub alias: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -160,7 +161,7 @@ pub fn download_replays(
     let matchup_filter = request.matchup.as_deref().and_then(parse_matchup_filter);
     let filtered = candidates
         .into_iter()
-        .filter(|replay| is_one_v_one(replay))
+        .filter(is_one_v_one)
         .filter(|replay| match &matchup_filter {
             Some((a, b)) => replay_matches(&replay.attributes.replay_player_races, (*a, *b)),
             None => true,
@@ -177,7 +178,12 @@ pub fn download_replays(
         .build()
         .context("failed to create http client")?;
     let manifest_path = storage.manifest_path();
-    let sanitized_profile = sanitize_component(&request.toon);
+    let storage_profile = request
+        .alias
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or(&request.toon);
+    let sanitized_profile = sanitize_component(storage_profile);
     let matchup_label = request
         .matchup
         .as_deref()
@@ -186,7 +192,7 @@ pub fn download_replays(
     let sanitized_matchup = sanitize_component(&matchup_label);
     storage
         .ensure_matchup_dir(&sanitized_profile, &sanitized_matchup)
-        .with_context(|| format!("failed to prepare replay directory for {}", request.toon))?;
+        .with_context(|| format!("failed to prepare replay directory for {}", storage_profile))?;
 
     for replay in filtered {
         summary.attempted += 1;
