@@ -86,13 +86,27 @@ impl CacheReader {
         }
     }
 
-    pub fn parse_for_port(&self, window_secs: i64) -> Result<Option<u16>> {
-        let now = Utc::now();
-        let work = || -> Result<Option<u16>> {
-            let entries = self
-                .cache
-                .entries()
-                .context("Failed to read cache entries")?;
+    fn scan_with_retry<T, F>(&mut self, mut op: F) -> Result<T>
+    where
+        F: FnMut(&ChromeCache) -> Result<T>,
+    {
+        match catch_unwind(AssertUnwindSafe(|| op(&self.cache))) {
+            Ok(res) => res,
+            Err(_) => {
+                self.refresh()
+                    .context("refresh cache after rotation panicked")?;
+                match catch_unwind(AssertUnwindSafe(|| op(&self.cache))) {
+                    Ok(res) => res,
+                    Err(_) => Err(anyhow!("Cache scan panicked (transient cache rotation)")),
+                }
+            }
+        }
+    }
+
+    pub fn parse_for_port(&mut self, window_secs: i64) -> Result<Option<u16>> {
+        self.scan_with_retry(|cache| {
+            let now = Utc::now();
+            let entries = cache.entries().context("Failed to read cache entries")?;
             let latest = entries
                 .filter_map(|e| {
                     let entry = e.get().ok()?;
@@ -111,25 +125,18 @@ impl CacheReader {
                 .max_by_key(|(_, ct)| *ct)
                 .map(|(p, _)| p);
             Ok(latest)
-        };
-        match catch_unwind(AssertUnwindSafe(work)) {
-            Ok(res) => res,
-            Err(_) => Err(anyhow!("Cache scan panicked (transient cache rotation)")),
-        }
+        })
     }
 
     #[allow(clippy::collapsible_if)]
     pub fn latest_opponent_profile(
-        &self,
+        &mut self,
         exclude_name: Option<&str>,
         window_secs: i64,
     ) -> Result<Option<(String, u16)>> {
-        let now = Utc::now();
-        let work = || -> Result<Option<(String, u16)>> {
-            let entries = self
-                .cache
-                .entries()
-                .context("Failed to read cache entries")?;
+        self.scan_with_retry(|cache| {
+            let now = Utc::now();
+            let entries = cache.entries().context("Failed to read cache entries")?;
             let latest = entries
                 .filter_map(|e| {
                     let entry = e.get().ok()?;
@@ -155,20 +162,16 @@ impl CacheReader {
                 .max_by_key(|(_, ct)| *ct)
                 .map(|(data, _)| data);
             Ok(latest)
-        };
-        match catch_unwind(AssertUnwindSafe(work)) {
-            Ok(res) => res,
-            Err(_) => Err(anyhow!("Cache scan panicked (transient cache rotation)")),
-        }
+        })
     }
 
-    pub fn latest_mmgameloading_profile(&self, window_secs: i64) -> Result<Option<(String, u16)>> {
-        let now = Utc::now();
-        let work = || -> Result<Option<(String, u16)>> {
-            let entries = self
-                .cache
-                .entries()
-                .context("Failed to read cache entries")?;
+    pub fn latest_mmgameloading_profile(
+        &mut self,
+        window_secs: i64,
+    ) -> Result<Option<(String, u16)>> {
+        self.scan_with_retry(|cache| {
+            let now = Utc::now();
+            let entries = cache.entries().context("Failed to read cache entries")?;
             let latest = entries
                 .filter_map(|e| {
                     let entry = e.get().ok()?;
@@ -189,20 +192,13 @@ impl CacheReader {
                 .max_by_key(|(_, ct)| *ct)
                 .map(|(data, _)| data);
             Ok(latest)
-        };
-        match catch_unwind(AssertUnwindSafe(work)) {
-            Ok(res) => res,
-            Err(_) => Err(anyhow!("Cache scan panicked (transient cache rotation)")),
-        }
+        })
     }
 
-    pub fn latest_self_profile(&self, window_secs: i64) -> Result<Option<(String, u16)>> {
-        let now = Utc::now();
-        let work = || -> Result<Option<(String, u16)>> {
-            let entries = self
-                .cache
-                .entries()
-                .context("Failed to read cache entries")?;
+    pub fn latest_self_profile(&mut self, window_secs: i64) -> Result<Option<(String, u16)>> {
+        self.scan_with_retry(|cache| {
+            let now = Utc::now();
+            let entries = cache.entries().context("Failed to read cache entries")?;
             let latest = entries
                 .filter_map(|e| {
                     let entry = e.get().ok()?;
@@ -223,20 +219,13 @@ impl CacheReader {
                 .max_by_key(|(_, creation_time)| *creation_time)
                 .map(|(data, _)| data);
             Ok(latest)
-        };
-        match catch_unwind(AssertUnwindSafe(work)) {
-            Ok(res) => res,
-            Err(_) => Err(anyhow!("Cache scan panicked (transient cache rotation)")),
-        }
+        })
     }
 
-    pub fn recent_keys(&self, window_secs: i64, max: usize) -> Result<Vec<(String, i64)>> {
-        let now = Utc::now();
-        let work = || -> Result<Vec<(String, i64)>> {
-            let entries = self
-                .cache
-                .entries()
-                .context("Failed to read cache entries")?;
+    pub fn recent_keys(&mut self, window_secs: i64, max: usize) -> Result<Vec<(String, i64)>> {
+        self.scan_with_retry(|cache| {
+            let now = Utc::now();
+            let entries = cache.entries().context("Failed to read cache entries")?;
             let mut items: Vec<(String, i64, DateTime<Utc>)> = entries
                 .filter_map(|e| {
                     let entry = e.get().ok()?;
@@ -261,10 +250,6 @@ impl CacheReader {
                 .take(max)
                 .map(|(k, age, _)| (k, age))
                 .collect())
-        };
-        match catch_unwind(AssertUnwindSafe(work)) {
-            Ok(res) => res,
-            Err(_) => Err(anyhow!("Cache scan panicked (transient cache rotation)")),
-        }
+        })
     }
 }

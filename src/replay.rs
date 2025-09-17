@@ -79,7 +79,7 @@ pub fn system_time_secs(st: SystemTime) -> Option<u64> {
 }
 use crate::app::App;
 use crate::config::Config;
-use crate::history::{OpponentRecord, save_history};
+use crate::history::{OpponentRecord, derive_wl_and_race, save_history};
 use crate::overlay;
 use std::process::Command;
 
@@ -154,61 +154,135 @@ pub fn tick_replay_and_rating_retry(app: &mut App, cfg: &Config) {
                 match output {
                     Ok(out) if out.status.success() => {
                         let text = String::from_utf8_lossy(&out.stdout).to_string();
-                        let (winner, players) = crate::replay::parse_screp_overview(&text);
-                        // Find self and opponent in players
-                        if let (Some(self_name), Some(wlab)) = (&app.self_profile_name, winner) {
+                        let (_, players) = crate::replay::parse_screp_overview(&text);
+                        if let Some(self_name) = &app.self_profile_name {
                             let mut self_team: Option<u8> = None;
-                            let mut opp: Option<(u8, String)> = None;
                             for (team, _race, name) in players.iter() {
                                 if name.eq_ignore_ascii_case(self_name) {
                                     self_team = Some(*team);
                                 }
                             }
                             if let Some(st) = self_team {
-                                // opponent is anyone in players with team != st; choose first
-                                for (team, _race, name) in players.iter() {
+                                let opponent = players.iter().find_map(|(team, race, name)| {
                                     if *team != st {
-                                        opp = Some((*team, name.clone()));
-                                        break;
-                                    }
-                                }
-                                if let Some((_ot, opp_name)) = opp {
-                                    // Determine win/loss
-                                    let win = wlab
-                                        .to_ascii_lowercase()
-                                        .contains(&format!("team {}", st).to_ascii_lowercase());
-                                    let key = opp_name.to_ascii_lowercase();
-                                    let entry = app
-                                        .opponent_history
-                                        .entry(key.clone())
-                                        .or_insert_with(|| OpponentRecord {
-                                            name: opp_name.clone(),
-                                            gateway: app.gateway.unwrap_or(0),
-                                            race: None,
-                                            current_rating: None,
-                                            previous_rating: None,
-                                            wins: 0,
-                                            losses: 0,
-                                            last_match_ts: None,
-                                        });
-                                    if let Some(mt) = app.last_replay_mtime {
-                                        entry.last_match_ts = crate::replay::system_time_secs(mt);
-                                    }
-                                    if win {
-                                        entry.wins = entry.wins.saturating_add(1);
+                                        Some((name.clone(), race.clone()))
                                     } else {
-                                        entry.losses = entry.losses.saturating_add(1);
+                                        None
                                     }
-                                    // Fill race if unknown from screp
-                                    if entry.race.is_none() {
-                                        if let Some((_, race, _)) =
-                                            players.iter().find(|(t, _, n)| {
-                                                *t != st && n.eq_ignore_ascii_case(&opp_name)
-                                            })
-                                        {
-                                            entry.race = race.clone();
+                                });
+                                if let Some((opp_name, opp_race)) = opponent {
+                                    let key = opp_name.to_ascii_lowercase();
+                                    let gateway = app.gateway.unwrap_or(0);
+                                    let last_replay_ts = app
+                                        .last_replay_mtime
+                                        .and_then(crate::replay::system_time_secs);
+
+                                    {
+                                        let entry = app
+                                            .opponent_history
+                                            .entry(key.clone())
+                                            .or_insert_with(|| OpponentRecord {
+                                                name: opp_name.clone(),
+                                                gateway,
+                                                race: None,
+                                                current_rating: None,
+                                                previous_rating: None,
+                                                wins: 0,
+                                                losses: 0,
+                                                last_match_ts: None,
+                                            });
+                                        entry.name = opp_name.clone();
+                                        entry.gateway = gateway;
+                                        if let Some(ts) = last_replay_ts {
+                                            entry.last_match_ts = Some(ts);
+                                        }
+                                        if entry.race.is_none() {
+                                            entry.race = opp_race.clone();
                                         }
                                     }
+
+                                    let mut history_update: Option<(
+                                        u32,
+                                        u32,
+                                        Option<u64>,
+                                        Option<String>,
+                                    )> = None;
+                                    let mut refresh_rating_overlay = false;
+
+                                    if let (Some(api), Some(name), Some(gw)) =
+                                        (&app.api, &app.self_profile_name, app.self_gateway)
+                                    {
+                                        match api.get_toon_info(name, gw) {
+                                            Ok(info) => {
+                                                let old = app.self_profile_rating;
+                                                let new = api.compute_rating_for_name(&info, name);
+                                                app.self_profile_rating = new;
+                                                refresh_rating_overlay = true;
+                                                match api.get_scr_profile(name, gw) {
+                                                    Ok(profile) => {
+                                                        history_update = Some(derive_wl_and_race(
+                                                            &profile, name, &opp_name,
+                                                        ));
+                                                    }
+                                                    Err(err) => {
+                                                        tracing::error!(error = %err, "failed to refresh self profile after replay");
+                                                    }
+                                                }
+                                                if new == old {
+                                                    app.rating_retry_baseline = old;
+                                                    app.rating_retry_retries = cfg.rating_retry_max;
+                                                    app.rating_retry_next_at = Some(
+                                                        std::time::Instant::now()
+                                                            .checked_add(cfg.rating_retry_interval)
+                                                            .unwrap_or_else(
+                                                                std::time::Instant::now,
+                                                            ),
+                                                    );
+                                                } else {
+                                                    app.rating_retry_retries = 0;
+                                                    app.rating_retry_next_at = None;
+                                                    app.rating_retry_baseline = None;
+                                                }
+                                            }
+                                            Err(_) => {
+                                                app.rating_retry_baseline = app.self_profile_rating;
+                                                app.rating_retry_retries = cfg.rating_retry_max;
+                                                app.rating_retry_next_at = Some(
+                                                    std::time::Instant::now()
+                                                        .checked_add(cfg.rating_retry_interval)
+                                                        .unwrap_or_else(std::time::Instant::now),
+                                                );
+                                            }
+                                        }
+                                    }
+
+                                    if refresh_rating_overlay {
+                                        if let Err(err) = overlay::write_rating(cfg, app) {
+                                            tracing::error!(error = %err, "failed to update rating overlay after replay");
+                                            app.last_profile_text =
+                                                Some(format!("Overlay error: {err}"));
+                                        }
+                                    }
+
+                                    if let Some((wins, losses, ts, race)) = history_update {
+                                        if let Some(entry) = app.opponent_history.get_mut(&key) {
+                                            entry.wins = wins;
+                                            entry.losses = losses;
+                                            if let Some(latest) = ts {
+                                                entry.last_match_ts = Some(latest);
+                                            }
+                                            if entry.race.is_none() {
+                                                entry.race =
+                                                    race.map(|s| match s.to_lowercase().as_str() {
+                                                        "protoss" => "Protoss".to_string(),
+                                                        "terran" => "Terran".to_string(),
+                                                        "zerg" => "Zerg".to_string(),
+                                                        _ => s,
+                                                    });
+                                            }
+                                        }
+                                    }
+
                                     if let Err(err) = save_history(
                                         &cfg.opponent_history_path,
                                         &app.opponent_history,
@@ -216,44 +290,6 @@ pub fn tick_replay_and_rating_retry(app: &mut App, cfg: &Config) {
                                         tracing::error!(error = %err, "failed to persist opponent history");
                                         app.last_profile_text =
                                             Some(format!("History save error: {err}"));
-                                    }
-
-                                    // Refresh rating once per replay; if unchanged, schedule short retries
-                                    if let (Some(api), Some(name), Some(gw)) =
-                                        (&app.api, &app.self_profile_name, app.self_gateway)
-                                    {
-                                        if let Ok(info) = api.get_toon_info(name, gw) {
-                                            let old = app.self_profile_rating;
-                                            let new = api.compute_rating_for_name(&info, name);
-                                            app.self_profile_rating = new;
-                                            if let Err(err) = overlay::write_rating(cfg, app) {
-                                                tracing::error!(error = %err, "failed to update rating overlay after replay");
-                                                app.last_profile_text =
-                                                    Some(format!("Overlay error: {err}"));
-                                            }
-                                            if new == old {
-                                                app.rating_retry_baseline = old;
-                                                app.rating_retry_retries = cfg.rating_retry_max;
-                                                app.rating_retry_next_at = Some(
-                                                    std::time::Instant::now()
-                                                        .checked_add(cfg.rating_retry_interval)
-                                                        .unwrap_or_else(std::time::Instant::now),
-                                                );
-                                            } else {
-                                                app.rating_retry_retries = 0;
-                                                app.rating_retry_next_at = None;
-                                                app.rating_retry_baseline = None;
-                                            }
-                                        } else {
-                                            // If immediate fetch fails, also schedule retries
-                                            app.rating_retry_baseline = app.self_profile_rating;
-                                            app.rating_retry_retries = cfg.rating_retry_max;
-                                            app.rating_retry_next_at = Some(
-                                                std::time::Instant::now()
-                                                    .checked_add(cfg.rating_retry_interval)
-                                                    .unwrap_or_else(std::time::Instant::now),
-                                            );
-                                        }
                                     }
                                 }
                             }

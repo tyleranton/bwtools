@@ -58,9 +58,22 @@ fn detect_self_switch(app: &mut App, cfg: &Config, r: &mut CacheReader) {
 
     match r.latest_mmgameloading_profile(cfg.scan_window_secs) {
         Ok(Some((mm_name, mm_gw))) => {
+            let is_own = app.own_profiles.contains(&mm_name);
+            let prev_name = app
+                .self_profile_name
+                .clone()
+                .unwrap_or_else(|| "<none>".to_string());
+            let prev_gw = app.self_gateway.unwrap_or(0);
+            tracing::debug!(
+                mm_name = %mm_name,
+                mm_gateway = mm_gw,
+                current_name = %prev_name,
+                current_gateway = prev_gw,
+                is_known_own = is_own,
+                "mmgameloading entry observed"
+            );
             let changed_name = app.self_profile_name.as_deref() != Some(&mm_name);
             let changed_gw = app.self_gateway != Some(mm_gw);
-            let is_own = app.own_profiles.contains(&mm_name);
             if is_own && (changed_name || changed_gw) {
                 app.self_profile_name = Some(mm_name);
                 app.self_gateway = Some(mm_gw);
@@ -73,6 +86,18 @@ fn detect_self_switch(app: &mut App, cfg: &Config, r: &mut CacheReader) {
                     tracing::error!(error = %err, "failed to update rating overlay after self switch");
                     app.last_profile_text = Some(format!("Overlay error: {err}"));
                 }
+            } else if !is_own {
+                tracing::debug!(
+                    mm_name = %mm_name,
+                    mm_gateway = mm_gw,
+                    "mmgameloading entry ignored because profile not owned"
+                );
+            } else {
+                tracing::debug!(
+                    mm_name = %mm_name,
+                    mm_gateway = mm_gw,
+                    "mmgameloading entry matched current self profile"
+                );
             }
         }
         Ok(None) => {}
@@ -89,9 +114,19 @@ fn detect_opponent(app: &mut App, cfg: &Config, r: &mut CacheReader) {
     match r.latest_opponent_profile(self_name, cfg.scan_window_secs) {
         Ok(Some((name, gw))) => {
             if app.own_profiles.contains(&name) {
+                tracing::debug!(
+                    opponent = %name,
+                    gateway = gw,
+                    "ignoring opponent candidate because it is an owned profile"
+                );
                 return;
             }
 
+            tracing::debug!(
+                opponent = %name,
+                gateway = gw,
+                "mmgameloading opponent candidate detected"
+            );
             app.profile_name = Some(name);
             app.gateway = Some(gw);
 
@@ -100,6 +135,7 @@ fn detect_opponent(app: &mut App, cfg: &Config, r: &mut CacheReader) {
             {
                 let identity = (opp_name.clone(), opp_gw);
                 if app.last_opponent_identity.as_ref() == Some(&identity) {
+                    tracing::debug!(opponent = %opp_name, gateway = opp_gw, "opponent identity unchanged; skipping refresh");
                     return;
                 }
 
@@ -107,6 +143,12 @@ fn detect_opponent(app: &mut App, cfg: &Config, r: &mut CacheReader) {
 
                 match api.opponent_toons_summary(opp_name, opp_gw) {
                     Ok(list) => {
+                        tracing::debug!(
+                            opponent = %opp_name,
+                            gateway = opp_gw,
+                            toon_count = list.len(),
+                            "opponent toons summary fetched"
+                        );
                         app.opponent_toons_data = list.clone();
                         app.opponent_toons = list
                             .into_iter()
@@ -127,6 +169,12 @@ fn detect_opponent(app: &mut App, cfg: &Config, r: &mut CacheReader) {
                 match api.get_scr_profile(opp_name, opp_gw) {
                     Ok(profile) => {
                         let (mr, _lines, _results) = api.profile_stats_last100(&profile, opp_name);
+                        tracing::debug!(
+                            opponent = %opp_name,
+                            gateway = opp_gw,
+                            main_race = ?mr,
+                            "opponent profile fetched"
+                        );
                         app.opponent_race = mr;
                     }
                     Err(err) => tracing::error!(error = %err, "opponent profile fetch failed"),
