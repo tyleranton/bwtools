@@ -123,8 +123,8 @@ fn detect_opponent(app: &mut App, cfg: &Config, r: &mut CacheReader) {
 
                 if let Ok(info) = api.get_toon_info(opp_name, opp_gw) {
                     let season = info.matchmaked_current_season;
-                    let guid = info
-                        .profiles
+                    let profiles = info.profiles.as_deref().unwrap_or(&[]);
+                    let guid = profiles
                         .iter()
                         .find(|p| p.toon.eq_ignore_ascii_case(opp_name))
                         .map(|p| p.toon_guid)

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
 use chrome_cache_parser::ChromeCache;
@@ -58,15 +58,32 @@ pub struct CacheReader {
 
 impl CacheReader {
     pub fn new(cache_dir: PathBuf) -> Result<Self> {
-        let cache =
-            ChromeCache::from_path(cache_dir.clone()).context("Failed to open Chrome cache")?;
+        let cache = Self::load_cache(&cache_dir, "open")?;
         Ok(Self { cache_dir, cache })
     }
 
     pub fn refresh(&mut self) -> Result<()> {
-        self.cache = ChromeCache::from_path(self.cache_dir.clone())
-            .context("Failed to refresh Chrome cache")?;
+        self.cache = Self::load_cache(&self.cache_dir, "refresh")?;
         Ok(())
+    }
+
+    fn load_cache(cache_dir: &Path, action: &str) -> Result<ChromeCache> {
+        let path = cache_dir.to_path_buf();
+        match catch_unwind(AssertUnwindSafe(move || {
+            ChromeCache::from_path(path.clone())
+        })) {
+            Ok(Ok(cache)) => Ok(cache),
+            Ok(Err(err)) => Err(anyhow!(
+                "Failed to {} Chrome cache at {}: {}",
+                action,
+                cache_dir.display(),
+                err
+            )),
+            Err(_) => Err(anyhow!(
+                "Chrome cache {} panicked (transient cache rotation)",
+                action
+            )),
+        }
     }
 
     pub fn parse_for_port(&self, window_secs: i64) -> Result<Option<u16>> {

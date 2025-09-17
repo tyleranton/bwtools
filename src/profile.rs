@@ -7,9 +7,10 @@ pub fn fetch_self_profile(app: &mut App, cfg: &Config) {
     {
         match api.get_toon_info(name, gw) {
             Ok(info) => {
+                let profiles = info.profiles.as_deref().unwrap_or(&[]);
                 let mut out = String::new();
-                out.push_str(&format!("profiles ({}):\n", info.profiles.len()));
-                for (i, p) in info.profiles.iter().enumerate() {
+                out.push_str(&format!("profiles ({}):\n", profiles.len()));
+                for (i, p) in profiles.iter().enumerate() {
                     out.push_str(&format!(
                         "{:>3}. title={}, toon={}, toon_guid={}, private={}\n",
                         i + 1,
@@ -22,7 +23,7 @@ pub fn fetch_self_profile(app: &mut App, cfg: &Config) {
                 app.last_profile_text = Some(out);
                 app.self_profile_rating = api.compute_rating_for_name(&info, name);
 
-                app.own_profiles = info.profiles.iter().map(|p| p.toon.clone()).collect();
+                app.own_profiles = profiles.iter().map(|p| p.toon.clone()).collect();
                 if let Ok(profile) = api.get_scr_profile(name, gw) {
                     let (mr, lines, _results) = api.profile_stats_last100(&profile, name);
                     app.self_main_race = mr;

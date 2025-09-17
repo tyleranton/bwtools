@@ -15,8 +15,8 @@ pub fn run_search(app: &mut App) {
         match api.get_toon_info(&name, gw) {
             Ok(info) => {
                 let season = info.matchmaked_current_season;
-                let guid = info
-                    .profiles
+                let profiles = info.profiles.as_deref().unwrap_or(&[]);
+                let guid = profiles
                     .iter()
                     .find(|p| p.toon.eq_ignore_ascii_case(&name))
                     .map(|p| p.toon_guid)

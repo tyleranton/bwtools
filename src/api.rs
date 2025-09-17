@@ -337,9 +337,13 @@ pub const RATING_MIN_GAMES: u32 = 5;
 pub fn find_guid_for_toon(info: &ScrToonInfo, profile_name: &str) -> Option<u32> {
     let season = info.matchmaked_current_season;
     info.profiles
-        .iter()
-        .find(|p| p.toon.eq_ignore_ascii_case(profile_name))
-        .map(|p| p.toon_guid)
+        .as_ref()
+        .and_then(|profiles| {
+            profiles
+                .iter()
+                .find(|p| p.toon.eq_ignore_ascii_case(profile_name))
+                .map(|p| p.toon_guid)
+        })
         .or_else(|| {
             info.matchmaked_stats
                 .iter()
