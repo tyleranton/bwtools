@@ -1,3 +1,4 @@
+use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -14,20 +15,24 @@ pub struct OpponentRecord {
 
 pub type OpponentHistory = std::collections::HashMap<String, OpponentRecord>;
 
-pub fn load_history(path: &std::path::Path) -> OpponentHistory {
-    std::fs::read(path)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<OpponentHistory>(&bytes).ok())
-        .unwrap_or_default()
+pub fn load_history(path: &std::path::Path) -> Result<OpponentHistory> {
+    match std::fs::read(path) {
+        Ok(bytes) => serde_json::from_slice::<OpponentHistory>(&bytes)
+            .with_context(|| format!("deserialize opponent history {}", path.display())),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(OpponentHistory::default()),
+        Err(err) => Err(anyhow!(err).context(format!("read opponent history {}", path.display()))),
+    }
 }
 
-pub fn save_history(path: &std::path::Path, hist: &OpponentHistory) {
+pub fn save_history(path: &std::path::Path, hist: &OpponentHistory) -> Result<()> {
     if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("create history directory {}", parent.display()))?;
     }
-    if let Ok(data) = serde_json::to_vec_pretty(hist) {
-        let _ = std::fs::write(path, data);
-    }
+    let data = serde_json::to_vec_pretty(hist).context("serialize opponent history for saving")?;
+    std::fs::write(path, data)
+        .with_context(|| format!("write opponent history {}", path.display()))?;
+    Ok(())
 }
 
 // Derive win/loss vs a specific opponent from a self profile. Also returns the

@@ -1,6 +1,8 @@
 AGENTS.md
 IDEAS.md
 
+logs
+
 # Rust build
 /target
 **/*.rs.bk

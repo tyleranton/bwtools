@@ -1,21 +1,25 @@
 use crate::app::App;
 use crate::config::Config;
+use anyhow::{Context, Result};
 use std::path::Path;
 
-pub fn write_if_changed(path: &Path, last_text: &mut Option<String>, text: String) {
+fn write_if_changed(path: &Path, last_text: &mut Option<String>, text: String) -> Result<()> {
     if last_text.as_deref() == Some(text.as_str()) {
-        return;
+        return Ok(());
     }
     if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("create overlay directory {}", parent.display()))?;
     }
-    let _ = std::fs::write(path, &text);
+    std::fs::write(path, &text)
+        .with_context(|| format!("write overlay file {}", path.display()))?;
     *last_text = Some(text);
+    Ok(())
 }
 
-pub fn write_rating(cfg: &Config, app: &mut App) {
+pub fn write_rating(cfg: &Config, app: &mut App) -> Result<()> {
     if !cfg.rating_output_enabled {
-        return;
+        return Ok(());
     }
     let text = match app.self_profile_rating {
         Some(r) => r.to_string(),
@@ -25,17 +29,17 @@ pub fn write_rating(cfg: &Config, app: &mut App) {
         &cfg.rating_output_path,
         &mut app.rating_output_last_text,
         text,
-    );
+    )
 }
 
-pub fn write_opponent(cfg: &Config, app: &mut App) {
+pub fn write_opponent(cfg: &Config, app: &mut App) -> Result<()> {
     if !cfg.opponent_output_enabled {
-        return;
+        return Ok(());
     }
     let name = match &app.profile_name {
         Some(n) => n.clone(),
         None => {
-            return;
+            return Ok(());
         }
     };
     let race = app
@@ -61,5 +65,5 @@ pub fn write_opponent(cfg: &Config, app: &mut App) {
         &cfg.opponent_output_path,
         &mut app.opponent_output_last_text,
         text,
-    );
+    )
 }

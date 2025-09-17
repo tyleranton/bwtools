@@ -1,4 +1,6 @@
 use std::io;
+use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event};
@@ -28,6 +30,35 @@ use crate::replay_download::{ReplayDownloadRequest, ReplayStorage};
 use crate::tui::{install_panic_hook, restore_terminal, setup_terminal};
 use crate::ui::render;
 use std::path::Path;
+
+static TRACING_GUARD: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
+static TRACING_INIT: OnceLock<()> = OnceLock::new();
+
+fn init_logging() {
+    TRACING_INIT.get_or_init(|| {
+        let log_dir = Path::new("logs");
+        if let Err(err) = std::fs::create_dir_all(log_dir) {
+            eprintln!(
+                "failed to create log directory {}: {err}",
+                log_dir.display()
+            );
+            return;
+        }
+
+        let file_appender = tracing_appender::rolling::daily(log_dir, "bwtools.log");
+        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+        let _ = TRACING_GUARD.set(guard);
+
+        let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+
+        tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_writer(non_blocking)
+            .with_ansi(false)
+            .init();
+    });
+}
 
 fn maybe_start_replay_download(app: &mut App, cfg: &Config) {
     if !app.replay_should_start {
@@ -78,6 +109,7 @@ fn maybe_start_replay_download(app: &mut App, cfg: &Config) {
 
 #[allow(clippy::collapsible_if)]
 fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> io::Result<()> {
+    init_logging();
     let cfg: Config = Default::default();
     let tick_rate = cfg.tick_rate;
     let mut last_tick = Instant::now();
@@ -86,17 +118,26 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
 
     let storage = ReplayStorage::new(cfg.replay_library_root.clone());
     if let Err(err) = storage.ensure_base_dirs() {
-        app.last_profile_text = Some(format!("Replay dir error: {}", err));
+        tracing::error!(error = %err, "failed to ensure replay directories");
+        app.last_profile_text = Some(format!("Replay dir error: {err}"));
     }
     app.replay_storage = Some(storage);
 
     // Load opponent history
-    app.opponent_history = load_history(&cfg.opponent_history_path);
+    match load_history(&cfg.opponent_history_path) {
+        Ok(hist) => app.opponent_history = hist,
+        Err(err) => {
+            tracing::error!(error = %err, "failed to load opponent history");
+            app.opponent_history = Default::default();
+            app.last_profile_text = Some(format!("History load error: {err}"));
+        }
+    }
 
     let mut reader = match CacheReader::new(cfg.cache_dir.clone()) {
         Ok(r) => Some(r),
         Err(e) => {
-            app.last_profile_text = Some(format!("Cache error: {}", e));
+            tracing::error!(error = %e, "failed to open cache");
+            app.last_profile_text = Some(format!("Cache error: {e}"));
             None
         }
     };
@@ -129,39 +170,71 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
         }
 
         if last_tick.elapsed() >= tick_rate {
+            if reader.is_none() {
+                match CacheReader::new(cfg.cache_dir.clone()) {
+                    Ok(r) => reader = Some(r),
+                    Err(e) => {
+                        tracing::error!(error = %e, "failed to reopen cache");
+                        app.last_profile_text = Some(format!("Cache error: {e}"));
+                    }
+                }
+            }
+
+            let mut cache_panicked = false;
             if let Some(ref mut r) = reader {
                 if last_refresh.elapsed() >= cfg.refresh_interval {
                     if let Err(e) = r.refresh() {
-                        app.last_profile_text = Some(format!("Cache refresh error: {}", e));
+                        tracing::warn!(error = %e, "cache refresh failed");
                     }
                     last_refresh = Instant::now();
                 }
 
-                crate::detect::tick_detection(app, &cfg, r);
+                let detect_result = catch_unwind(AssertUnwindSafe(|| {
+                    crate::detect::tick_detection(app, &cfg, r);
+                }));
 
-                if app.is_ready() && !app.profile_fetched {
-                    crate::profile::fetch_self_profile(app, &cfg);
-                }
+                if detect_result.is_err() {
+                    cache_panicked = true;
+                } else {
+                    if app.is_ready() && !app.profile_fetched {
+                        crate::profile::fetch_self_profile(app, &cfg);
+                    }
 
-                if app.search_in_progress {
-                    crate::search::run_search(app);
-                }
+                    if app.search_in_progress {
+                        crate::search::run_search(app);
+                    }
+                    if app.is_ready() {
+                        crate::profile::poll_self_rating(app, &cfg);
+                        crate::replay::tick_replay_and_rating_retry(app, &cfg);
+                    }
+                    // Update opponent overlay text once per tick after potential updates
+                    if let Err(err) = overlay::write_opponent(&cfg, app) {
+                        tracing::error!(error = %err, "failed to update opponent overlay");
+                        app.last_profile_text = Some(format!("Overlay error: {err}"));
+                    }
 
-                if app.is_ready() {
-                    crate::profile::poll_self_rating(app, &cfg);
-                    crate::replay::tick_replay_and_rating_retry(app, &cfg);
-                }
-                // Update opponent overlay text once per tick after potential updates
-                overlay::write_opponent(&cfg, app);
-
-                if matches!(app.view, crate::app::View::Debug) {
-                    if let Ok(list) = r.recent_keys(app.debug_window_secs, 20) {
-                        app.debug_recent = list
-                            .into_iter()
-                            .map(|(k, age)| format!("{age:>2}s • {}", k))
-                            .collect();
+                    if matches!(app.view, crate::app::View::Debug) {
+                        match r.recent_keys(app.debug_window_secs, 20) {
+                            Ok(list) => {
+                                app.debug_recent = list
+                                    .into_iter()
+                                    .map(|(k, age)| format!("{age:>2}s • {}", k))
+                                    .collect();
+                            }
+                            Err(err) => {
+                                tracing::warn!(error = %err, "failed to list recent cache keys")
+                            }
+                        }
                     }
                 }
+            }
+
+            if cache_panicked {
+                tracing::error!("cache scan panicked; retrying shortly");
+                app.last_profile_text = Some("Cache scan panicked; retrying shortly".to_string());
+                reader = None;
+                last_tick = Instant::now();
+                continue;
             }
             maybe_start_replay_download(app, &cfg);
             app.poll_replay_job();

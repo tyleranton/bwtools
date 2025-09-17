@@ -31,10 +31,14 @@ pub fn fetch_self_profile(app: &mut App, cfg: &Config) {
                 }
                 app.last_rating_poll = Some(std::time::Instant::now());
                 app.profile_fetched = true;
-                overlay::write_rating(cfg, app);
+                if let Err(err) = overlay::write_rating(cfg, app) {
+                    tracing::error!(error = %err, "failed to update rating overlay");
+                    app.last_profile_text = Some(format!("Overlay error: {err}"));
+                }
             }
             Err(err) => {
-                app.last_profile_text = Some(format!("API error: {}", err));
+                tracing::error!(error = %err, "failed to fetch self toon info");
+                app.last_profile_text = Some(format!("API error: {err}"));
                 app.last_rating_poll = Some(std::time::Instant::now());
                 app.profile_fetched = true;
             }
@@ -63,10 +67,14 @@ pub fn poll_self_rating(app: &mut App, cfg: &Config) {
                     app.self_main_race = mr;
                     app.self_matchups = lines;
                 }
-                overlay::write_rating(cfg, app);
+                if let Err(err) = overlay::write_rating(cfg, app) {
+                    tracing::error!(error = %err, "failed to update rating overlay");
+                    app.last_profile_text = Some(format!("Overlay error: {err}"));
+                }
             }
-            Err(_) => {
+            Err(err) => {
                 app.last_rating_poll = Some(std::time::Instant::now());
+                tracing::error!(error = %err, "failed to poll self rating");
             }
         }
     }

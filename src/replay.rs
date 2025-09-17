@@ -99,7 +99,10 @@ pub fn tick_replay_and_rating_retry(app: &mut App, cfg: &Config) {
                                 app.rating_retry_retries = 0;
                                 app.rating_retry_next_at = None;
                                 app.rating_retry_baseline = None;
-                                overlay::write_rating(cfg, app);
+                                if let Err(err) = overlay::write_rating(cfg, app) {
+                                    tracing::error!(error = %err, "failed to update rating overlay after replay");
+                                    app.last_profile_text = Some(format!("Overlay error: {err}"));
+                                }
                             } else {
                                 app.rating_retry_retries =
                                     app.rating_retry_retries.saturating_sub(1);
@@ -206,7 +209,14 @@ pub fn tick_replay_and_rating_retry(app: &mut App, cfg: &Config) {
                                             entry.race = race.clone();
                                         }
                                     }
-                                    save_history(&cfg.opponent_history_path, &app.opponent_history);
+                                    if let Err(err) = save_history(
+                                        &cfg.opponent_history_path,
+                                        &app.opponent_history,
+                                    ) {
+                                        tracing::error!(error = %err, "failed to persist opponent history");
+                                        app.last_profile_text =
+                                            Some(format!("History save error: {err}"));
+                                    }
 
                                     // Refresh rating once per replay; if unchanged, schedule short retries
                                     if let (Some(api), Some(name), Some(gw)) =
@@ -216,7 +226,11 @@ pub fn tick_replay_and_rating_retry(app: &mut App, cfg: &Config) {
                                             let old = app.self_profile_rating;
                                             let new = api.compute_rating_for_name(&info, name);
                                             app.self_profile_rating = new;
-                                            overlay::write_rating(cfg, app);
+                                            if let Err(err) = overlay::write_rating(cfg, app) {
+                                                tracing::error!(error = %err, "failed to update rating overlay after replay");
+                                                app.last_profile_text =
+                                                    Some(format!("Overlay error: {err}"));
+                                            }
                                             if new == old {
                                                 app.rating_retry_baseline = old;
                                                 app.rating_retry_retries = cfg.rating_retry_max;
@@ -248,8 +262,7 @@ pub fn tick_replay_and_rating_retry(app: &mut App, cfg: &Config) {
                         app.last_replay_processed_mtime = app.last_replay_mtime;
                     }
                     _ => {
-                        app.last_profile_text =
-                            Some("screp failed to parse LastReplay".to_string());
+                        tracing::error!("screp failed to parse LastReplay");
                     }
                 }
                 app.replay_changed_at = None;
