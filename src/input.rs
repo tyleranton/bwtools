@@ -1,4 +1,4 @@
-use crate::app::App;
+use crate::app::{App, View};
 use crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
@@ -15,7 +15,7 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                     crate::app::View::Debug => crate::app::View::Main,
                     _ => crate::app::View::Debug,
                 };
-                if matches!(app.view, crate::app::View::Debug) {
+                if app.view == View::Debug {
                     app.debug_scroll = 0;
                 }
             }
@@ -40,6 +40,11 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                 }
                 app.replay_focus = crate::app::ReplayFocus::Toon;
                 app.replay_last_error = None;
+            }
+            KeyCode::Char('p') => {
+                app.view = crate::app::View::Players;
+                app.players_scroll = 0;
+                app.player_search_cursor = app.player_search_query.chars().count();
             }
             KeyCode::Char('q') => {
                 app.should_quit = true;
@@ -147,6 +152,7 @@ pub fn handle_mouse_event(app: &mut App, me: MouseEvent) {
             }
             crate::app::View::Debug => {}
             crate::app::View::Replays => {}
+            crate::app::View::Players => {}
         }
     }
 }

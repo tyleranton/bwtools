@@ -4,6 +4,7 @@ mod debug_view;
 mod display;
 mod footer;
 mod main_view;
+mod players_view;
 mod replays_view;
 mod search_view;
 mod status;
@@ -29,6 +30,7 @@ pub fn render(frame: &mut ratatui::Frame, app: &mut App) {
         View::Debug => debug_view::render_debug(frame, layout[1], app),
         View::Search => search_view::render_search(frame, layout[1], app),
         View::Replays => replays_view::render_replays(frame, layout[1], app),
+        View::Players => players_view::render_players(frame, layout[1], app),
     }
 
     footer::render_footer(frame, layout[2]);

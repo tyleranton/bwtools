@@ -105,9 +105,9 @@ checksum = "46c5e41b57b8bba42a04676d81cb89e9ee8e859a1a66f80a5a72e1cb76b34d43"
 
 [[package]]
 name = "bw-web-api-rs"
-version = "0.2.6"
+version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3670d6dff808d15190352178fe7406958309a699b695df01601a3e08027c8b82"
+checksum = "678792ad82d6b63558825f01d51ce21cc20eb8304692fce4848a5249ca55003b"
 dependencies = [
  "async-trait",
  "reqwest",

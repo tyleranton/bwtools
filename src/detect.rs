@@ -59,16 +59,13 @@ fn detect_self_switch(app: &mut App, cfg: &Config, r: &mut CacheReader) {
     match r.latest_mmgameloading_profile(cfg.scan_window_secs) {
         Ok(Some((mm_name, mm_gw))) => {
             let is_own = app.own_profiles.contains(&mm_name);
-            let prev_name = app
-                .self_profile_name
-                .clone()
-                .unwrap_or_else(|| "<none>".to_string());
-            let prev_gw = app.self_gateway.unwrap_or(0);
+            let current_name = app.self_profile_name.as_deref().unwrap_or("<none>");
+            let current_gateway = app.self_gateway.unwrap_or(0);
             tracing::debug!(
                 mm_name = %mm_name,
                 mm_gateway = mm_gw,
-                current_name = %prev_name,
-                current_gateway = prev_gw,
+                current_name,
+                current_gateway,
                 is_known_own = is_own,
                 "mmgameloading entry observed"
             );

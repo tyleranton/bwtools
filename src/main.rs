@@ -15,6 +15,7 @@ mod detect;
 mod history;
 mod input;
 mod overlay;
+mod players;
 mod profile;
 mod replay;
 mod replay_download;
@@ -22,7 +23,7 @@ mod search;
 mod tui;
 mod ui;
 
-use crate::app::App;
+use crate::app::{App, View};
 use crate::cache::CacheReader;
 use crate::config::Config;
 use crate::history::load_history;
@@ -133,6 +134,13 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
         }
     }
 
+    match crate::players::load_player_map() {
+        Ok(map) => app.set_players(map),
+        Err(err) => {
+            tracing::error!(error = %err, "failed to load player list");
+        }
+    }
+
     let mut reader = match CacheReader::new(cfg.cache_dir.clone()) {
         Ok(r) => Some(r),
         Err(e) => {
@@ -213,7 +221,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                         app.last_profile_text = Some(format!("Overlay error: {err}"));
                     }
 
-                    if matches!(app.view, crate::app::View::Debug) {
+                    if app.view == View::Debug {
                         match r.recent_keys(app.debug_window_secs, 20) {
                             Ok(list) => {
                                 app.debug_recent = list

@@ -1,5 +1,6 @@
 use crate::api::ApiHandle;
 use crate::history::OpponentRecord;
+use crate::players::{PlayerEntry, PlayerMap};
 use crate::replay_download::{ReplayDownloadRequest, ReplayDownloadSummary, ReplayStorage};
 use ratatui::layout::Rect;
 use std::collections::{HashMap, HashSet};
@@ -7,14 +8,16 @@ use std::sync::mpsc::{Receiver, TryRecvError};
 use std::thread::JoinHandle;
 use std::time::Instant;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum View {
     Main,
     Debug,
     Search,
     Replays,
+    Players,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReplayFocus {
     Toon,
     Alias,
@@ -96,6 +99,13 @@ pub struct App {
     // Self stats for main view
     pub self_main_race: Option<String>,
     pub self_matchups: Vec<String>,
+    // Player directory view
+    pub players_map: PlayerMap,
+    pub players_entries: Vec<PlayerEntry>,
+    pub players_scroll: u16,
+    pub players_filtered: Vec<PlayerEntry>,
+    pub player_search_query: String,
+    pub player_search_cursor: usize,
 }
 
 impl App {
@@ -121,7 +131,7 @@ impl App {
 
     #[allow(clippy::collapsible_if)]
     pub fn on_key(&mut self, code: crossterm::event::KeyCode) {
-        if matches!(self.view, View::Replays) {
+        if self.view == View::Replays {
             match code {
                 crossterm::event::KeyCode::Tab => {
                     self.replay_focus = match self.replay_focus {
@@ -405,7 +415,7 @@ impl App {
         }
 
         // If we are in Search view, handle input locally and do not trigger global hotkeys
-        if matches!(self.view, View::Search) {
+        if self.view == View::Search {
             match code {
                 crossterm::event::KeyCode::Tab => {
                     self.search_focus_gateway = !self.search_focus_gateway;
@@ -506,49 +516,147 @@ impl App {
             return;
         }
 
+        if self.view == View::Players {
+            match code {
+                crossterm::event::KeyCode::Left => {
+                    if self.player_search_cursor > 0 {
+                        self.player_search_cursor -= 1;
+                    }
+                    return;
+                }
+                crossterm::event::KeyCode::Right => {
+                    let len = self.player_search_query.chars().count();
+                    if self.player_search_cursor < len {
+                        self.player_search_cursor += 1;
+                    }
+                    return;
+                }
+                crossterm::event::KeyCode::Home => {
+                    self.player_search_cursor = 0;
+                    return;
+                }
+                crossterm::event::KeyCode::End => {
+                    self.player_search_cursor = self.player_search_query.chars().count();
+                    return;
+                }
+                crossterm::event::KeyCode::Backspace => {
+                    if self.player_search_cursor > 0 {
+                        let mut chars: Vec<char> = self.player_search_query.chars().collect();
+                        let idx = self.player_search_cursor - 1;
+                        if idx < chars.len() {
+                            chars.remove(idx);
+                            self.player_search_query = chars.into_iter().collect();
+                            self.player_search_cursor -= 1;
+                            self.update_player_filter();
+                        }
+                    }
+                    return;
+                }
+                crossterm::event::KeyCode::Delete => {
+                    let mut chars: Vec<char> = self.player_search_query.chars().collect();
+                    if self.player_search_cursor < chars.len() {
+                        chars.remove(self.player_search_cursor);
+                        self.player_search_query = chars.into_iter().collect();
+                        self.update_player_filter();
+                    }
+                    return;
+                }
+                crossterm::event::KeyCode::Char(c) => {
+                    let mut chars: Vec<char> = self.player_search_query.chars().collect();
+                    let idx = self.player_search_cursor.min(chars.len());
+                    chars.insert(idx, c);
+                    self.player_search_query = chars.into_iter().collect();
+                    self.player_search_cursor += 1;
+                    self.update_player_filter();
+                    return;
+                }
+                _ => {}
+            }
+        }
+
         match code {
             // Note: Global view hotkeys are handled in main (Ctrl+D/S/M)
             crossterm::event::KeyCode::Up => {
-                if matches!(self.view, View::Debug) {
+                if self.view == View::Debug {
                     self.debug_scroll = self.debug_scroll.saturating_sub(1);
+                } else if self.view == View::Players {
+                    self.players_scroll = self.players_scroll.saturating_sub(1);
                 }
             }
             crossterm::event::KeyCode::Down => {
-                if matches!(self.view, View::Debug) {
+                if self.view == View::Debug {
                     self.debug_scroll = self.debug_scroll.saturating_add(1);
+                } else if self.view == View::Players {
+                    let max_scroll = self
+                        .players_filtered
+                        .len()
+                        .saturating_sub(1)
+                        .min(u16::MAX as usize) as u16;
+                    self.players_scroll = self.players_scroll.saturating_add(1).min(max_scroll);
                 }
             }
             crossterm::event::KeyCode::PageUp => {
-                if matches!(self.view, View::Debug) {
+                if self.view == View::Debug {
                     self.debug_scroll = self.debug_scroll.saturating_sub(10);
+                } else if self.view == View::Players {
+                    self.players_scroll = self.players_scroll.saturating_sub(10);
                 }
             }
             crossterm::event::KeyCode::PageDown => {
-                if matches!(self.view, View::Debug) {
+                if self.view == View::Debug {
                     self.debug_scroll = self.debug_scroll.saturating_add(10);
+                } else if self.view == View::Players {
+                    let max_scroll = self
+                        .players_filtered
+                        .len()
+                        .saturating_sub(1)
+                        .min(u16::MAX as usize) as u16;
+                    self.players_scroll = self.players_scroll.saturating_add(10).min(max_scroll);
                 }
             }
             crossterm::event::KeyCode::Home => {
-                if matches!(self.view, View::Debug) {
+                if self.view == View::Debug {
                     self.debug_scroll = 0;
+                } else if self.view == View::Players {
+                    self.players_scroll = 0;
                 }
             }
             crossterm::event::KeyCode::End => {
-                if matches!(self.view, View::Debug) {
+                if self.view == View::Debug {
                     self.debug_scroll = u16::MAX;
+                } else if self.view == View::Players {
+                    let max_scroll = self
+                        .players_filtered
+                        .len()
+                        .saturating_sub(1)
+                        .min(u16::MAX as usize) as u16;
+                    self.players_scroll = max_scroll;
                 }
             }
             crossterm::event::KeyCode::Char('k') => {
-                if matches!(self.view, View::Debug) {
+                if self.view == View::Debug {
                     self.debug_scroll = self.debug_scroll.saturating_sub(1);
+                } else if self.view == View::Players {
+                    self.players_scroll = self.players_scroll.saturating_sub(1);
                 }
             }
             crossterm::event::KeyCode::Char('j') => {
-                if matches!(self.view, View::Debug) {
+                if self.view == View::Debug {
                     self.debug_scroll = self.debug_scroll.saturating_add(1);
+                } else if self.view == View::Players {
+                    let max_scroll = self
+                        .players_filtered
+                        .len()
+                        .saturating_sub(1)
+                        .min(u16::MAX as usize) as u16;
+                    self.players_scroll = self.players_scroll.saturating_add(1).min(max_scroll);
                 }
             }
             _ => {}
+        }
+
+        if self.view == View::Players {
+            self.clamp_players_scroll();
         }
     }
 }
@@ -622,6 +730,12 @@ impl Default for App {
             search_other_toons_rect: None,
             self_main_race: None,
             self_matchups: Vec::new(),
+            players_map: PlayerMap::new(),
+            players_entries: Vec::new(),
+            players_scroll: 0,
+            players_filtered: Vec::new(),
+            player_search_query: String::new(),
+            player_search_cursor: 0,
         }
     }
 }
@@ -654,6 +768,54 @@ impl App {
         if self.search_cursor > len {
             self.search_cursor = len;
         }
+    }
+
+    fn clamp_player_search_cursor(&mut self) {
+        let len = self.player_search_query.chars().count();
+        if self.player_search_cursor > len {
+            self.player_search_cursor = len;
+        }
+    }
+
+    fn clamp_players_scroll(&mut self) {
+        if self.players_filtered.is_empty() {
+            self.players_scroll = 0;
+            return;
+        }
+        let max_scroll = self
+            .players_filtered
+            .len()
+            .saturating_sub(1)
+            .min(u16::MAX as usize) as u16;
+        if self.players_scroll > max_scroll {
+            self.players_scroll = max_scroll;
+        }
+    }
+
+    pub fn update_player_filter(&mut self) {
+        let query = self.player_search_query.trim().to_ascii_lowercase();
+        if query.is_empty() {
+            self.players_filtered = self.players_entries.clone();
+        } else {
+            self.players_filtered = self
+                .players_entries
+                .iter()
+                .filter(|entry| entry.name.to_ascii_lowercase().contains(&query))
+                .cloned()
+                .collect();
+        }
+        self.players_scroll = 0;
+        self.clamp_players_scroll();
+        self.clamp_player_search_cursor();
+    }
+
+    pub fn set_players(&mut self, map: PlayerMap) {
+        self.players_entries = crate::players::flatten_players(&map);
+        self.players_map = map;
+        self.players_scroll = 0;
+        self.player_search_query.clear();
+        self.player_search_cursor = 0;
+        self.update_player_filter();
     }
 
     pub fn replay_gateway_next(&mut self) {
