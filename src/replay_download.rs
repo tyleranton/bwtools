@@ -11,6 +11,7 @@ use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::api::ApiHandle;
 use crate::config::Config;
@@ -107,6 +108,236 @@ impl ReplayDownloadSummary {
     }
 }
 
+pub struct ReplayDownloadJob {
+    api: ApiHandle,
+    cfg: Config,
+    storage: ReplayStorage,
+    request: ReplayDownloadRequest,
+}
+
+impl ReplayDownloadJob {
+    pub fn new(base_url: String, cfg: Config, request: ReplayDownloadRequest) -> Result<Self> {
+        let api = ApiHandle::new(base_url)?;
+        let storage = ReplayStorage::new(cfg.replay_library_root.clone());
+        Ok(Self {
+            api,
+            cfg,
+            storage,
+            request,
+        })
+    }
+
+    pub fn run(self) -> ReplayDownloadSummary {
+        let mut summary = ReplayDownloadSummary::default();
+        if let Err(err) = self.storage.ensure_base_dirs() {
+            summary.record_error(anyhow!(err).context("failed to ensure replay directories"));
+            return summary;
+        }
+
+        let manifest_path = self.storage.manifest_path();
+        let mut manifest = ReplayManifest::load(&manifest_path);
+
+        let profile = match self
+            .api
+            .get_scr_profile(&self.request.toon, self.request.gateway)
+            .with_context(|| format!("failed to load profile for {}", self.request.toon))
+        {
+            Ok(p) => p,
+            Err(err) => {
+                summary.record_error(err);
+                return summary;
+            }
+        };
+
+        let mut candidates: Vec<_> = profile.replays.into_iter().collect();
+        candidates.sort_by(|a, b| b.create_time.cmp(&a.create_time));
+
+        let matchup_filter = self
+            .request
+            .matchup
+            .as_deref()
+            .and_then(parse_matchup_filter);
+        let filtered = candidates
+            .into_iter()
+            .filter(is_one_v_one)
+            .filter(|replay| match &matchup_filter {
+                Some((a, b)) => replay_matches(&replay.attributes.replay_player_races, (*a, *b)),
+                None => true,
+            })
+            .take(self.request.limit.min(20))
+            .collect::<Vec<_>>();
+
+        summary.requested = filtered.len();
+        if summary.requested == 0 {
+            return summary;
+        }
+
+        let client = match Client::builder()
+            .build()
+            .context("failed to create http client")
+        {
+            Ok(client) => client,
+            Err(err) => {
+                summary.record_error(err);
+                return summary;
+            }
+        };
+
+        let storage_profile = self
+            .request
+            .alias
+            .as_deref()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or(&self.request.toon);
+        let sanitized_profile = sanitize_component(storage_profile);
+        let matchup_label = self
+            .request
+            .matchup
+            .as_deref()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "All".to_string());
+        let sanitized_matchup = sanitize_component(&matchup_label);
+        if let Err(err) = self
+            .storage
+            .ensure_matchup_dir(&sanitized_profile, &sanitized_matchup)
+            .with_context(|| format!("failed to prepare replay directory for {}", storage_profile))
+        {
+            summary.record_error(err);
+            return summary;
+        }
+
+        for replay in filtered {
+            summary.attempted += 1;
+            match self.process_replay(
+                &client,
+                &mut manifest,
+                &sanitized_profile,
+                &sanitized_matchup,
+                &replay,
+            ) {
+                Ok(Some(path)) => {
+                    summary.saved += 1;
+                    summary.saved_paths.push(path);
+                }
+                Ok(None) => {
+                    summary.filtered_short += 1;
+                }
+                Err(ReplayProcessError::AlreadyExists) => {
+                    summary.skipped_existing += 1;
+                }
+                Err(ReplayProcessError::Other(err)) => {
+                    summary.record_error(err);
+                }
+            }
+        }
+
+        if let Err(err) = manifest.save(&manifest_path) {
+            summary.record_error(anyhow!(err).context("failed to write replay manifest"));
+        }
+
+        summary
+    }
+
+    fn process_replay(
+        &self,
+        client: &Client,
+        manifest: &mut ReplayManifest,
+        sanitized_profile: &str,
+        sanitized_matchup: &str,
+        replay: &bw_web_api_rs::models::common::Replay,
+    ) -> Result<Option<PathBuf>, ReplayProcessError> {
+        let detail = self
+            .api
+            .get_matchmaker_player_info(&replay.link)
+            .map_err(|e| ReplayProcessError::Other(e.context("failed matchmaker detail")))?;
+
+        let best = detail
+            .replays
+            .into_iter()
+            .max_by(|a, b| a.create_time.cmp(&b.create_time))
+            .ok_or_else(|| {
+                ReplayProcessError::Other(anyhow!("no replay URLs in matchmaker detail"))
+            })?;
+
+        let identifier = if !best.md5.is_empty() {
+            best.md5.clone()
+        } else if !replay.attributes.game_id.is_empty() {
+            replay.attributes.game_id.clone()
+        } else {
+            replay.link.clone()
+        };
+
+        if manifest.entries.contains_key(&identifier) {
+            return Err(ReplayProcessError::AlreadyExists);
+        }
+
+        if best.url.trim().is_empty() {
+            return Err(ReplayProcessError::Other(anyhow!("empty replay url")));
+        }
+
+        let target_dir = self
+            .storage
+            .ensure_matchup_dir(sanitized_profile, sanitized_matchup)
+            .map_err(|e| ReplayProcessError::Other(anyhow!(e).context("ensure matchup dir")))?;
+
+        let tmp_path = target_dir.join(format!(".tmp-{}.rep", truncate_identifier(&identifier)));
+        if let Err(err) = download_to_path(client, &best.url, &tmp_path) {
+            let _ = fs::remove_file(&tmp_path);
+            return Err(ReplayProcessError::Other(err));
+        }
+
+        let overview = match run_screp_overview(&self.cfg, &tmp_path) {
+            Ok(text) => text,
+            Err(err) => {
+                let _ = fs::remove_file(&tmp_path);
+                return Err(ReplayProcessError::Other(err));
+            }
+        };
+
+        if let Some(duration) = crate::replay::parse_screp_duration_seconds(&overview)
+            && duration <= 120
+        {
+            let _ = fs::remove_file(&tmp_path);
+            return Ok(None);
+        }
+
+        let (main_name, main_race, opp_name, opp_race) =
+            extract_players(&overview, &self.request.toon).ok_or_else(|| {
+                ReplayProcessError::Other(anyhow!("failed to parse players from screp"))
+            })?;
+
+        let date_prefix = replay_date_prefix(best.create_time)
+            .or_else(|| replay_date_prefix(replay.create_time as u64));
+        let file_name = build_filename(
+            date_prefix.as_deref(),
+            &main_name,
+            &main_race,
+            &opp_name,
+            &opp_race,
+        );
+        let mut final_path = target_dir.join(&file_name);
+        let mut counter = 1;
+        while final_path.exists() {
+            let alt = format!("{}-{}.rep", file_name.trim_end_matches(".rep"), counter);
+            final_path = target_dir.join(alt);
+            counter += 1;
+        }
+
+        fs::rename(&tmp_path, &final_path)
+            .map_err(|e| ReplayProcessError::Other(anyhow!(e).context("finalize replay")))?;
+
+        manifest.entries.insert(
+            identifier,
+            ManifestEntry {
+                path: final_path.to_string_lossy().into_owned(),
+                saved_at: current_timestamp(),
+            },
+        );
+
+        Ok(Some(final_path))
+    }
+}
+
 pub fn spawn_download_job(
     base_url: String,
     cfg: Config,
@@ -114,18 +345,8 @@ pub fn spawn_download_job(
 ) -> (thread::JoinHandle<()>, Receiver<ReplayDownloadSummary>) {
     let (tx, rx) = mpsc::channel();
     let handle = thread::spawn(move || {
-        let summary = match ApiHandle::new(base_url) {
-            Ok(api) => {
-                let storage = ReplayStorage::new(cfg.replay_library_root.clone());
-                match download_replays(&api, &cfg, &storage, request) {
-                    Ok(summary) => summary,
-                    Err(err) => {
-                        let mut summary = ReplayDownloadSummary::default();
-                        summary.record_error(err);
-                        summary
-                    }
-                }
-            }
+        let summary = match ReplayDownloadJob::new(base_url, cfg, request) {
+            Ok(job) => job.run(),
             Err(err) => {
                 let mut summary = ReplayDownloadSummary::default();
                 summary.record_error(err);
@@ -137,201 +358,15 @@ pub fn spawn_download_job(
     (handle, rx)
 }
 
-pub fn download_replays(
-    api: &ApiHandle,
-    cfg: &Config,
-    storage: &ReplayStorage,
-    request: ReplayDownloadRequest,
-) -> Result<ReplayDownloadSummary> {
-    storage
-        .ensure_base_dirs()
-        .context("failed to ensure replay directories")?;
-
-    let mut manifest = ReplayManifest::load(&storage.manifest_path());
-    let mut summary = ReplayDownloadSummary::default();
-
-    let profile = api
-        .get_scr_profile(&request.toon, request.gateway)
-        .with_context(|| format!("failed to load profile for {}", request.toon))?;
-
-    let mut candidates: Vec<_> = profile.replays.into_iter().collect();
-    // Sort newest first
-    candidates.sort_by(|a, b| b.create_time.cmp(&a.create_time));
-
-    let matchup_filter = request.matchup.as_deref().and_then(parse_matchup_filter);
-    let filtered = candidates
-        .into_iter()
-        .filter(is_one_v_one)
-        .filter(|replay| match &matchup_filter {
-            Some((a, b)) => replay_matches(&replay.attributes.replay_player_races, (*a, *b)),
-            None => true,
-        })
-        .take(request.limit.min(20))
-        .collect::<Vec<_>>();
-
-    summary.requested = filtered.len();
-    if summary.requested == 0 {
-        return Ok(summary);
-    }
-
-    let client = Client::builder()
-        .build()
-        .context("failed to create http client")?;
-    let manifest_path = storage.manifest_path();
-    let storage_profile = request
-        .alias
-        .as_deref()
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or(&request.toon);
-    let sanitized_profile = sanitize_component(storage_profile);
-    let matchup_label = request
-        .matchup
-        .as_deref()
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "All".to_string());
-    let sanitized_matchup = sanitize_component(&matchup_label);
-    storage
-        .ensure_matchup_dir(&sanitized_profile, &sanitized_matchup)
-        .with_context(|| format!("failed to prepare replay directory for {}", storage_profile))?;
-
-    for replay in filtered {
-        summary.attempted += 1;
-        match process_replay(
-            api,
-            cfg,
-            &client,
-            storage,
-            &mut manifest,
-            &request,
-            &sanitized_profile,
-            &sanitized_matchup,
-            &replay,
-        ) {
-            Ok(Some(path)) => {
-                summary.saved += 1;
-                summary.saved_paths.push(path);
-            }
-            Ok(None) => {
-                summary.filtered_short += 1;
-            }
-            Err(ReplayProcessError::AlreadyExists) => {
-                summary.skipped_existing += 1;
-            }
-            Err(ReplayProcessError::Other(err)) => {
-                summary.record_error(err);
-            }
-        }
-    }
-
-    manifest
-        .save(&manifest_path)
-        .context("failed to write replay manifest")?;
-
-    Ok(summary)
-}
-
-enum ReplayProcessError {
+#[derive(Debug, Error)]
+pub enum ReplayProcessError {
+    #[error("replay already downloaded")]
     AlreadyExists,
-    Other(anyhow::Error),
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
-#[allow(clippy::too_many_arguments)]
-fn process_replay(
-    api: &ApiHandle,
-    cfg: &Config,
-    client: &Client,
-    storage: &ReplayStorage,
-    manifest: &mut ReplayManifest,
-    request: &ReplayDownloadRequest,
-    profile_dir: &str,
-    matchup_dir: &str,
-    replay: &bw_web_api_rs::models::common::Replay,
-) -> Result<Option<PathBuf>, ReplayProcessError> {
-    let detail = api
-        .get_matchmaker_player_info(&replay.link)
-        .map_err(|e| ReplayProcessError::Other(e.context("failed matchmaker detail")))?;
-
-    let best = detail
-        .replays
-        .into_iter()
-        .max_by(|a, b| a.create_time.cmp(&b.create_time))
-        .ok_or_else(|| ReplayProcessError::Other(anyhow!("no replay URLs in matchmaker detail")))?;
-
-    let identifier = if !best.md5.is_empty() {
-        best.md5.clone()
-    } else if !replay.attributes.game_id.is_empty() {
-        replay.attributes.game_id.clone()
-    } else {
-        replay.link.clone()
-    };
-
-    if manifest.entries.contains_key(&identifier) {
-        return Err(ReplayProcessError::AlreadyExists);
-    }
-
-    if best.url.trim().is_empty() {
-        return Err(ReplayProcessError::Other(anyhow!("empty replay url")));
-    }
-
-    let target_dir = storage
-        .ensure_matchup_dir(profile_dir, matchup_dir)
-        .map_err(|e| ReplayProcessError::Other(e.into()))?;
-
-    let tmp_path = target_dir.join(format!(".tmp-{}.rep", truncate_identifier(&identifier)));
-    if let Err(err) = download_to_path(client, &best.url, &tmp_path) {
-        let _ = fs::remove_file(&tmp_path);
-        return Err(ReplayProcessError::Other(err));
-    }
-
-    let overview = match run_screp_overview(cfg, &tmp_path) {
-        Ok(text) => text,
-        Err(err) => {
-            let _ = fs::remove_file(&tmp_path);
-            return Err(ReplayProcessError::Other(err));
-        }
-    };
-
-    if let Some(duration) = crate::replay::parse_screp_duration_seconds(&overview)
-        && duration <= 120
-    {
-        let _ = fs::remove_file(&tmp_path);
-        return Ok(None);
-    }
-
-    let (main_name, main_race, opp_name, opp_race) = extract_players(&overview, &request.toon)
-        .ok_or_else(|| ReplayProcessError::Other(anyhow!("failed to parse players from screp")))?;
-
-    let date_prefix = replay_date_prefix(best.create_time)
-        .or_else(|| replay_date_prefix(replay.create_time as u64));
-    let file_name = build_filename(
-        date_prefix.as_deref(),
-        &main_name,
-        &main_race,
-        &opp_name,
-        &opp_race,
-    );
-    let mut final_path = target_dir.join(&file_name);
-    let mut counter = 1;
-    while final_path.exists() {
-        let alt = format!("{}-{}.rep", file_name.trim_end_matches(".rep"), counter);
-        final_path = target_dir.join(alt);
-        counter += 1;
-    }
-
-    fs::rename(&tmp_path, &final_path).map_err(|e| ReplayProcessError::Other(anyhow!(e)))?;
-
-    manifest.entries.insert(
-        identifier,
-        ManifestEntry {
-            path: final_path.to_string_lossy().into_owned(),
-            saved_at: current_timestamp(),
-        },
-    );
-
-    Ok(Some(final_path))
-}
-
-fn download_to_path(client: &Client, url: &str, path: &Path) -> Result<()> {
+fn download_to_path(client: &Client, url: &str, path: &Path) -> Result<(), anyhow::Error> {
     let mut response = client
         .get(url)
         .send()
@@ -344,7 +379,7 @@ fn download_to_path(client: &Client, url: &str, path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn run_screp_overview(cfg: &Config, path: &Path) -> Result<String> {
+fn run_screp_overview(cfg: &Config, path: &Path) -> Result<String, anyhow::Error> {
     let output = Command::new(&cfg.screp_cmd)
         .arg("-overview")
         .arg(path)

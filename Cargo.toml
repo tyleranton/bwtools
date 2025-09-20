@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.99"
-chrome-cache-parser = "0.2.3"
+chrome-cache-parser = { git = "https://github.com/tyleranton/chrome-cache-parser.git", branch = "bugfix/handle-block-file-panic" }
 chrono = "0.4.42"
 crossterm = "0.29.0"
 ratatui = "0.29.0"
@@ -20,3 +20,4 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 tracing-appender = "0.2"
 bw-web-api-rs = "0.2.6"
+thiserror = "1.0.69"

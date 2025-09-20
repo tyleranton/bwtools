@@ -1,36 +1,56 @@
-#![allow(clippy::collapsible_if, clippy::collapsible_match)]
 use crate::app::App;
 use crate::cache::CacheReader;
 use crate::config::Config;
-use crate::history::{OpponentRecord, derive_wl_and_race, save_history};
-use crate::overlay;
+use crate::history::{FileHistorySource, HistoryService, OpponentRecord, derive_wl_and_race};
+use crate::overlay::{OverlayError, OverlayService};
+use thiserror::Error;
 
-pub fn tick_detection(app: &mut App, cfg: &Config, r: &mut CacheReader) {
-    detect_port(app, cfg, r);
-    detect_self_bootstrap(app, cfg, r);
-    init_api(app);
-    detect_self_switch(app, cfg, r);
-    detect_opponent(app, cfg, r);
+pub struct DetectionService;
+
+#[derive(Debug, Error)]
+pub enum DetectionError {
+    #[error("overlay error")]
+    Overlay(#[from] OverlayError),
+    #[error("history persistence error")]
+    History(#[source] anyhow::Error),
+    #[error("api error")]
+    Api(#[source] anyhow::Error),
 }
 
-fn detect_port(app: &mut App, cfg: &Config, r: &mut CacheReader) {
+impl DetectionService {
+    pub fn tick(
+        app: &mut App,
+        cfg: &Config,
+        reader: &mut CacheReader,
+        history: Option<&HistoryService<FileHistorySource>>,
+    ) -> Result<(), DetectionError> {
+        detect_port(app, cfg, reader);
+        detect_self_bootstrap(app, cfg, reader);
+        init_api(app);
+        detect_self_switch(app, cfg, reader)?;
+        detect_opponent(app, cfg, reader, history)?;
+        Ok(())
+    }
+}
+
+fn detect_port(app: &mut App, cfg: &Config, reader: &mut CacheReader) {
     if app.port.is_some() {
         return;
     }
 
-    match r.parse_for_port(cfg.scan_window_secs) {
+    match reader.parse_for_port(cfg.scan_window_secs) {
         Ok(Some(port)) => app.port = Some(port),
         Ok(None) => {}
         Err(err) => tracing::warn!(error = %err, "failed to read port from cache"),
     }
 }
 
-fn detect_self_bootstrap(app: &mut App, cfg: &Config, r: &mut CacheReader) {
+fn detect_self_bootstrap(app: &mut App, cfg: &Config, reader: &mut CacheReader) {
     if app.port.is_none() || app.self_profile_name.is_some() {
         return;
     }
 
-    match r.latest_self_profile(cfg.scan_window_secs) {
+    match reader.latest_self_profile(cfg.scan_window_secs) {
         Ok(Some((name, gw))) => {
             app.self_profile_name = Some(name);
             app.self_gateway = Some(gw);
@@ -51,12 +71,16 @@ fn init_api(app: &mut App) {
     }
 }
 
-fn detect_self_switch(app: &mut App, cfg: &Config, r: &mut CacheReader) {
+fn detect_self_switch(
+    app: &mut App,
+    cfg: &Config,
+    reader: &mut CacheReader,
+) -> Result<(), DetectionError> {
     if !app.is_ready() {
-        return;
+        return Ok(());
     }
 
-    match r.latest_mmgameloading_profile(cfg.scan_window_secs) {
+    match reader.latest_mmgameloading_profile(cfg.scan_window_secs) {
         Ok(Some((mm_name, mm_gw))) => {
             let is_own = app.own_profiles.contains(&mm_name);
             let current_name = app.self_profile_name.as_deref().unwrap_or("<none>");
@@ -79,10 +103,7 @@ fn detect_self_switch(app: &mut App, cfg: &Config, r: &mut CacheReader) {
                 app.last_profile_text = None;
                 app.last_rating_poll = None;
                 app.reset_opponent_state();
-                if let Err(err) = overlay::write_rating(cfg, app) {
-                    tracing::error!(error = %err, "failed to update rating overlay after self switch");
-                    app.last_profile_text = Some(format!("Overlay error: {err}"));
-                }
+                OverlayService::write_rating(cfg, app)?;
             } else if !is_own {
                 tracing::debug!(
                     mm_name = %mm_name,
@@ -100,15 +121,21 @@ fn detect_self_switch(app: &mut App, cfg: &Config, r: &mut CacheReader) {
         Ok(None) => {}
         Err(err) => tracing::warn!(error = %err, "failed to detect self switch"),
     }
+    Ok(())
 }
 
-fn detect_opponent(app: &mut App, cfg: &Config, r: &mut CacheReader) {
+fn detect_opponent(
+    app: &mut App,
+    cfg: &Config,
+    reader: &mut CacheReader,
+    history: Option<&HistoryService<FileHistorySource>>,
+) -> Result<(), DetectionError> {
     if !app.is_ready() {
-        return;
+        return Ok(());
     }
 
     let self_name = app.self_profile_name.as_deref();
-    match r.latest_opponent_profile(self_name, cfg.scan_window_secs) {
+    match reader.latest_opponent_profile(self_name, cfg.scan_window_secs) {
         Ok(Some((name, gw))) => {
             if app.own_profiles.contains(&name) {
                 tracing::debug!(
@@ -116,7 +143,7 @@ fn detect_opponent(app: &mut App, cfg: &Config, r: &mut CacheReader) {
                     gateway = gw,
                     "ignoring opponent candidate because it is an owned profile"
                 );
-                return;
+                return Ok(());
             }
 
             tracing::debug!(
@@ -133,7 +160,7 @@ fn detect_opponent(app: &mut App, cfg: &Config, r: &mut CacheReader) {
                 let identity = (opp_name.clone(), opp_gw);
                 if app.last_opponent_identity.as_ref() == Some(&identity) {
                     tracing::debug!(opponent = %opp_name, gateway = opp_gw, "opponent identity unchanged; skipping refresh");
-                    return;
+                    return Ok(());
                 }
 
                 app.opponent_race = None;
@@ -217,45 +244,45 @@ fn detect_opponent(app: &mut App, cfg: &Config, r: &mut CacheReader) {
                         entry.current_rating = rating;
 
                         let no_wl = entry.wins + entry.losses == 0;
-                        if is_new || no_wl {
-                            if let (Some(self_name), Some(self_gw)) =
+                        if (is_new || no_wl)
+                            && let (Some(self_name), Some(self_gw)) =
                                 (&app.self_profile_name, app.self_gateway)
-                            {
-                                match api.get_scr_profile(self_name, self_gw) {
-                                    Ok(profile) => {
-                                        let (w, l, ts, race) =
-                                            derive_wl_and_race(&profile, self_name, opp_name);
-                                        entry.wins = w;
-                                        entry.losses = l;
-                                        entry.last_match_ts = ts;
-                                        if entry.race.is_none() {
-                                            entry.race =
-                                                race.map(|s| match s.to_lowercase().as_str() {
-                                                    "protoss" => "Protoss".to_string(),
-                                                    "terran" => "Terran".to_string(),
-                                                    "zerg" => "Zerg".to_string(),
-                                                    _ => s,
-                                                });
-                                        }
+                        {
+                            match api.get_scr_profile(self_name, self_gw) {
+                                Ok(profile) => {
+                                    let (w, l, ts, race) =
+                                        derive_wl_and_race(&profile, self_name, opp_name);
+                                    entry.wins = w;
+                                    entry.losses = l;
+                                    entry.last_match_ts = ts;
+                                    if entry.race.is_none() {
+                                        entry.race =
+                                            race.map(|s| match s.to_lowercase().as_str() {
+                                                "protoss" => "Protoss".to_string(),
+                                                "terran" => "Terran".to_string(),
+                                                "zerg" => "Zerg".to_string(),
+                                                _ => s,
+                                            });
                                     }
-                                    Err(err) => {
-                                        tracing::error!(error = %err, "self profile fetch for opponent history failed")
-                                    }
+                                }
+                                Err(err) => {
+                                    tracing::error!(error = %err, "self profile fetch for opponent history failed")
                                 }
                             }
                         }
 
-                        if let Err(err) =
-                            save_history(&cfg.opponent_history_path, &app.opponent_history)
-                        {
-                            tracing::error!(error = %err, "failed to persist opponent history");
+                        if let Some(service) = history {
+                            service
+                                .save(&app.opponent_history)
+                                .map_err(DetectionError::History)?;
                         }
                     }
-                    Err(err) => tracing::error!(error = %err, "opponent toon info fetch failed"),
+                    Err(err) => return Err(DetectionError::Api(err)),
                 }
             }
         }
         Ok(None) => {}
         Err(err) => tracing::warn!(error = %err, "failed to read opponent profile from cache"),
     }
+    Ok(())
 }

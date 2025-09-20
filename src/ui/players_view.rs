@@ -30,7 +30,13 @@ pub fn render_players(frame: &mut Frame, area: Rect, app: &App) {
     );
     frame.render_widget(search, chunks[0]);
 
-    let lines: Vec<Line> = if app.players_entries.is_empty() {
+    let total_entries = app
+        .player_directory
+        .as_ref()
+        .map(|dir| dir.entries().len())
+        .unwrap_or(0);
+
+    let lines: Vec<Line> = if total_entries == 0 {
         vec![Line::from(vec![Span::styled(
             "Player list unavailable",
             Style::default().fg(Color::DarkGray),
@@ -61,7 +67,7 @@ pub fn render_players(frame: &mut Frame, area: Rect, app: &App) {
     let title = format!(
         "Player Directory ({}/{})",
         app.players_filtered.len(),
-        app.players_entries.len()
+        total_entries
     );
     let list = Paragraph::new(lines)
         .block(

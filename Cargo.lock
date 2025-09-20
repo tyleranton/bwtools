@@ -132,6 +132,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "thiserror 1.0.69",
  "tokio",
  "tracing",
  "tracing-appender",
@@ -192,8 +193,7 @@ checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 [[package]]
 name = "chrome-cache-parser"
 version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e40fd74958c57bdbeed1bde6d9666d7126a088304d9e05dd8681532b134c05b0"
+source = "git+https://github.com/tyleranton/chrome-cache-parser.git?branch=bugfix%2Fhandle-block-file-panic#350ce83bfe63f4d5a4250573dda940c23bb95b59"
 dependencies = [
  "chrono",
  "static_assertions",

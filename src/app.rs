@@ -1,6 +1,6 @@
 use crate::api::ApiHandle;
 use crate::history::OpponentRecord;
-use crate::players::{PlayerEntry, PlayerMap};
+use crate::players::{PlayerDirectory, PlayerEntry};
 use crate::replay_download::{ReplayDownloadRequest, ReplayDownloadSummary, ReplayStorage};
 use ratatui::layout::Rect;
 use std::collections::{HashMap, HashSet};
@@ -100,8 +100,7 @@ pub struct App {
     pub self_main_race: Option<String>,
     pub self_matchups: Vec<String>,
     // Player directory view
-    pub players_map: PlayerMap,
-    pub players_entries: Vec<PlayerEntry>,
+    pub player_directory: Option<PlayerDirectory>,
     pub players_scroll: u16,
     pub players_filtered: Vec<PlayerEntry>,
     pub player_search_query: String,
@@ -730,8 +729,7 @@ impl Default for App {
             search_other_toons_rect: None,
             self_main_race: None,
             self_matchups: Vec::new(),
-            players_map: PlayerMap::new(),
-            players_entries: Vec::new(),
+            player_directory: None,
             players_scroll: 0,
             players_filtered: Vec::new(),
             player_search_query: String::new(),
@@ -793,25 +791,19 @@ impl App {
     }
 
     pub fn update_player_filter(&mut self) {
-        let query = self.player_search_query.trim().to_ascii_lowercase();
-        if query.is_empty() {
-            self.players_filtered = self.players_entries.clone();
-        } else {
-            self.players_filtered = self
-                .players_entries
-                .iter()
-                .filter(|entry| entry.name.to_ascii_lowercase().contains(&query))
-                .cloned()
-                .collect();
-        }
+        let query = self.player_search_query.trim();
+        self.players_filtered = self
+            .player_directory
+            .as_ref()
+            .map(|dir| dir.filter(query))
+            .unwrap_or_default();
         self.players_scroll = 0;
         self.clamp_players_scroll();
         self.clamp_player_search_cursor();
     }
 
-    pub fn set_players(&mut self, map: PlayerMap) {
-        self.players_entries = crate::players::flatten_players(&map);
-        self.players_map = map;
+    pub fn set_player_directory(&mut self, directory: PlayerDirectory) {
+        self.player_directory = Some(directory);
         self.players_scroll = 0;
         self.player_search_query.clear();
         self.player_search_cursor = 0;

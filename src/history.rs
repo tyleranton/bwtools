@@ -15,24 +15,64 @@ pub struct OpponentRecord {
 
 pub type OpponentHistory = std::collections::HashMap<String, OpponentRecord>;
 
-pub fn load_history(path: &std::path::Path) -> Result<OpponentHistory> {
-    match std::fs::read(path) {
-        Ok(bytes) => serde_json::from_slice::<OpponentHistory>(&bytes)
-            .with_context(|| format!("deserialize opponent history {}", path.display())),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(OpponentHistory::default()),
-        Err(err) => Err(anyhow!(err).context(format!("read opponent history {}", path.display()))),
+pub trait HistorySource {
+    fn load(&self) -> Result<OpponentHistory>;
+    fn save(&self, hist: &OpponentHistory) -> Result<()>;
+}
+
+pub struct FileHistorySource {
+    path: std::path::PathBuf,
+}
+
+impl FileHistorySource {
+    pub fn new(path: std::path::PathBuf) -> Self {
+        Self { path }
     }
 }
 
-pub fn save_history(path: &std::path::Path, hist: &OpponentHistory) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("create history directory {}", parent.display()))?;
+impl HistorySource for FileHistorySource {
+    fn load(&self) -> Result<OpponentHistory> {
+        match std::fs::read(&self.path) {
+            Ok(bytes) => serde_json::from_slice::<OpponentHistory>(&bytes)
+                .with_context(|| format!("deserialize opponent history {}", self.path.display())),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                Ok(OpponentHistory::default())
+            }
+            Err(err) => {
+                Err(anyhow!(err).context(format!("read opponent history {}", self.path.display())))
+            }
+        }
     }
-    let data = serde_json::to_vec_pretty(hist).context("serialize opponent history for saving")?;
-    std::fs::write(path, data)
-        .with_context(|| format!("write opponent history {}", path.display()))?;
-    Ok(())
+
+    fn save(&self, hist: &OpponentHistory) -> Result<()> {
+        if let Some(parent) = self.path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("create history directory {}", parent.display()))?;
+        }
+        let data =
+            serde_json::to_vec_pretty(hist).context("serialize opponent history for saving")?;
+        std::fs::write(&self.path, data)
+            .with_context(|| format!("write opponent history {}", self.path.display()))?;
+        Ok(())
+    }
+}
+
+pub struct HistoryService<S: HistorySource> {
+    source: S,
+}
+
+impl<S: HistorySource> HistoryService<S> {
+    pub fn new(source: S) -> Self {
+        Self { source }
+    }
+
+    pub fn load(&self) -> Result<OpponentHistory> {
+        self.source.load()
+    }
+
+    pub fn save(&self, hist: &OpponentHistory) -> Result<()> {
+        self.source.save(hist)
+    }
 }
 
 // Derive win/loss vs a specific opponent from a self profile. Also returns the
