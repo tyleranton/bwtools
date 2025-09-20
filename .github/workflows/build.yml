@@ -35,11 +35,19 @@ jobs:
       - name: Build (Linux)
         run: cargo build --release
 
+      - name: Package Linux bundle
+        run: |
+          set -euxo pipefail
+          mkdir -p dist/bwtools-linux
+          cp target/release/bwtools dist/bwtools-linux/
+          cp player_list.json dist/bwtools-linux/
+          tar -czf dist/bwtools-linux.tar.gz -C dist bwtools-linux
+
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
           name: bwtools-linux
-          path: target/release/bwtools
+          path: dist/bwtools-linux.tar.gz
 
   windows:
     runs-on: windows-latest
@@ -53,11 +61,20 @@ jobs:
       - name: Build (Windows MSVC)
         run: cargo build --release
 
+      - name: Package Windows bundle
+        shell: pwsh
+        run: |
+          $dist = "dist/bwtools-windows"
+          New-Item -ItemType Directory -Force -Path $dist | Out-Null
+          Copy-Item "target/release/bwtools.exe" -Destination $dist -Force
+          Copy-Item "player_list.json" -Destination $dist -Force
+          Compress-Archive -Path "$dist/*" -DestinationPath "dist/bwtools-windows.zip" -Force
+
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: bwtools-windows
-          path: target/release/bwtools.exe
+          path: dist/bwtools-windows.zip
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
@@ -80,5 +97,5 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            dist/bwtools
-            dist/bwtools.exe
+            dist/bwtools-linux.tar.gz
+            dist/bwtools-windows.zip

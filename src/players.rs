@@ -1,9 +1,12 @@
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    env,
+    fs,
+    path::PathBuf,
+};
 
-use anyhow::Result;
+use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
-
-const PLAYER_LIST_JSON: &str = include_str!("../player_list.json");
 
 #[derive(Debug, Clone, Deserialize)]
 struct PlayerRecord {
@@ -28,7 +31,9 @@ pub struct PlayerDirectory {
 
 impl PlayerDirectory {
     pub fn load() -> Result<Self> {
-        let map: PlayerMap = serde_json::from_str(PLAYER_LIST_JSON)?;
+        let (raw, path) = load_player_list()?;
+        let map: PlayerMap = serde_json::from_str(&raw)
+            .with_context(|| format!("invalid JSON in {}", path.display()))?;
         Ok(Self {
             entries: flatten_players(&map),
         })
@@ -63,4 +68,46 @@ fn flatten_players(map: &PlayerMap) -> Vec<PlayerEntry> {
         }
     }
     entries
+}
+
+fn load_player_list() -> Result<(String, PathBuf)> {
+    let mut tried_paths = Vec::new();
+
+    for candidate in candidate_player_list_paths() {
+        tried_paths.push(candidate.display().to_string());
+        match fs::read_to_string(&candidate) {
+            Ok(contents) => return Ok((contents, candidate)),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(err) => {
+                return Err(err).with_context(|| {
+                    format!("failed to read {}", candidate.display())
+                });
+            }
+        }
+    }
+
+    Err(anyhow!(
+        "player_list.json not found; looked in: {}",
+        tried_paths.join(", ")
+    ))
+}
+
+fn candidate_player_list_paths() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    if let Ok(exe_path) = env::current_exe() {
+        if let Some(dir) = exe_path.parent() {
+            candidates.push(dir.join("player_list.json"));
+        }
+    }
+
+    if let Ok(cwd) = env::current_dir() {
+        candidates.push(cwd.join("player_list.json"));
+    }
+
+    if let Some(manifest_dir) = option_env!("CARGO_MANIFEST_DIR") {
+        candidates.push(PathBuf::from(manifest_dir).join("player_list.json"));
+    }
+
+    candidates
 }
