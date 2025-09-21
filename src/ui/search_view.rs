@@ -11,23 +11,23 @@ pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
         .constraints([Constraint::Length(7), Constraint::Min(0)])
         .split(area);
 
-    let gw_label = crate::api::gateway_label(app.search_gateway);
-    let name_style = if app.search_focus_gateway {
+    let gw_label = crate::api::gateway_label(app.search.gateway);
+    let name_style = if app.search.focus_gateway {
         Style::default()
     } else {
         Style::default().add_modifier(Modifier::BOLD)
     };
-    let gw_style = if app.search_focus_gateway {
+    let gw_style = if app.search.focus_gateway {
         Style::default().add_modifier(Modifier::BOLD)
     } else {
         Style::default()
     };
-    let name_prefix = if app.search_focus_gateway {
+    let name_prefix = if app.search.focus_gateway {
         "  "
     } else {
         "→ "
     };
-    let gw_prefix = if app.search_focus_gateway {
+    let gw_prefix = if app.search.focus_gateway {
         "→ "
     } else {
         "  "
@@ -47,21 +47,21 @@ pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
         Line::from(vec![
             Span::raw(name_prefix),
             Span::styled("Name: ", Style::default()),
-            Span::styled(app.search_name.clone(), name_style),
+            Span::styled(app.search.name.clone(), name_style),
         ]),
         Line::from(vec![
             Span::raw(gw_prefix),
             Span::styled("Gateway: ", Style::default()),
-            Span::styled(format!("{} ({})", gw_label, app.search_gateway), gw_style),
+            Span::styled(format!("{} ({})", gw_label, app.search.gateway), gw_style),
         ]),
     ])
     .alignment(Alignment::Left)
     .block(input_block);
     frame.render_widget(input, rows[0]);
-    if !app.search_focus_gateway {
+    if !app.search.focus_gateway {
         let prefix_cols = 2u16;
         let label_cols = "Name: ".len() as u16;
-        let name_cols = app.search_cursor.min(app.search_name.chars().count()) as u16;
+        let name_cols = app.search.cursor.min(app.search.name.chars().count()) as u16;
         let mut x = input_inner
             .x
             .saturating_add(prefix_cols)
@@ -90,9 +90,9 @@ pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
     let is_self = app
         .self_profile_name
         .as_ref()
-        .map(|n| n.eq_ignore_ascii_case(&app.search_name))
+        .map(|n| n.eq_ignore_ascii_case(&app.search.name))
         .unwrap_or(false)
-        && app.self_gateway == Some(app.search_gateway);
+        && app.self_gateway == Some(app.search.gateway);
     if is_self {
         prof_lines.push(Line::from(Span::styled(
             "Self profile — see Main panel.",
@@ -100,11 +100,12 @@ pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
         )));
     } else {
         let rate_text = app
-            .search_rating
+            .search
+            .rating
             .map(|r| format!("Rating: {}", r))
             .unwrap_or_else(|| "Rating: N/A".to_string());
         prof_lines.push(Line::from(Span::raw(rate_text)));
-        if let Some(ref r) = app.search_main_race {
+        if let Some(ref r) = app.search.main_race {
             prof_lines.push(Line::from(vec![
                 Span::styled(
                     "Race: ",
@@ -115,8 +116,8 @@ pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
                 Span::raw(r.clone()),
             ]));
         }
-        if !app.search_matchups.is_empty() {
-            for m in app.search_matchups.iter() {
+        if !app.search.matchups.is_empty() {
+            for m in app.search.matchups.iter() {
                 if let Some((label, rest)) = m.split_once(':') {
                     prof_lines.push(Line::from(vec![
                         Span::styled(
@@ -133,7 +134,7 @@ pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
                 }
             }
         }
-        if let Some(err) = &app.search_error {
+        if let Some(err) = &app.search.error {
             prof_lines.push(Line::from(Span::styled(
                 format!("Error: {}", err),
                 Style::default().fg(Color::Red),
@@ -151,13 +152,13 @@ pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
     frame.render_widget(profile_panel, body[0]);
 
     let mut others: Vec<Line> = Vec::new();
-    if app.search_other_toons.is_empty() {
+    if app.search.other_toons.is_empty() {
         others.push(Line::from(Span::styled(
             "No other toons.",
             Style::default().fg(Color::DarkGray),
         )));
     } else {
-        for item in app.search_other_toons.iter().take(6) {
+        for item in app.search.other_toons.iter().take(6) {
             others.push(Line::from(Span::raw(item.clone())));
         }
     }
@@ -172,23 +173,23 @@ pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
         .wrap(Wrap { trim: true })
         .alignment(Alignment::Left)
         .block(others_block);
-    app.search_other_toons_rect = Some(others_inner);
+    app.search.other_toons_rect = Some(others_inner);
     frame.render_widget(others_panel, body[1]);
 
     let mut matches: Vec<Line> = Vec::new();
-    if app.search_matches.is_empty() {
+    if app.search.matches.is_empty() {
         matches.push(Line::from(Span::styled(
             "No recent matches.",
             Style::default().fg(Color::DarkGray),
         )));
     } else {
-        for m in app.search_matches.iter().take(30) {
+        for m in app.search.matches.iter().take(30) {
             matches.push(Line::from(Span::raw(m.clone())));
         }
     }
     let matches_panel = Paragraph::new(matches)
         .wrap(Wrap { trim: true })
-        .scroll((app.search_matches_scroll, 0))
+        .scroll((app.search.matches_scroll, 0))
         .alignment(Alignment::Left)
         .block(
             Block::default().borders(Borders::ALL).title(Span::styled(

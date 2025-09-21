@@ -11,17 +11,17 @@ pub enum SearchError {
 
 impl SearchService {
     pub fn run(app: &mut App) -> Result<(), SearchError> {
-        app.search_in_progress = false;
-        app.search_error = None;
-        app.search_rating = None;
-        app.search_other_toons.clear();
-        app.search_matches.clear();
-        app.search_matches_scroll = 0;
-        app.search_main_race = None;
-        app.search_matchups.clear();
-        if let (Some(api), true) = (&app.api, !app.search_name.trim().is_empty()) {
-            let name = app.search_name.trim().to_string();
-            let gw = app.search_gateway;
+        app.search.in_progress = false;
+        app.search.error = None;
+        app.search.rating = None;
+        app.search.other_toons.clear();
+        app.search.matches.clear();
+        app.search.matches_scroll = 0;
+        app.search.main_race = None;
+        app.search.matchups.clear();
+        if let (Some(api), true) = (&app.api, !app.search.name.trim().is_empty()) {
+            let name = app.search.name.trim().to_string();
+            let gw = app.search.gateway;
             match api.get_toon_info(&name, gw) {
                 Ok(info) => {
                     let season = info.matchmaked_current_season;
@@ -38,10 +38,10 @@ impl SearchService {
                                 })
                                 .map(|s| s.toon_guid)
                         });
-                    app.search_rating = guid.and_then(|g| api.compute_rating_for_guid(&info, g));
+                    app.search.rating = guid.and_then(|g| api.compute_rating_for_guid(&info, g));
                     let others = api.other_toons_with_ratings(&info, &name);
-                    app.search_other_toons_data = others.clone();
-                    app.search_other_toons = others
+                    app.search.other_toons_data = others.clone();
+                    app.search.other_toons = others
                         .into_iter()
                         .map(|(toon, gw_num, rating)| {
                             format!(
@@ -65,21 +65,21 @@ impl SearchService {
                     match api.get_scr_profile(&name, gw) {
                         Ok(profile) => {
                             if eligible {
-                                app.search_matches = api.match_summaries(&profile, &name);
+                                app.search.matches = api.match_summaries(&profile, &name);
                             } else {
-                                app.search_matches.clear();
+                                app.search.matches.clear();
                             }
                             let (mr, lines, _results) = api.profile_stats_last100(&profile, &name);
-                            app.search_main_race = mr;
-                            app.search_matchups = lines;
+                            app.search.main_race = mr;
+                            app.search.matchups = lines;
                         }
                         Err(e) => {
-                            app.search_error = Some(format!("profile error: {}", e));
+                            app.search.error = Some(format!("profile error: {}", e));
                         }
                     }
                 }
                 Err(e) => {
-                    app.search_error = Some(e.to_string());
+                    app.search.error = Some(e.to_string());
                     return Err(SearchError::Api(e));
                 }
             }

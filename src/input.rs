@@ -21,30 +21,30 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
             }
             KeyCode::Char('s') => {
                 app.view = crate::app::View::Search;
-                app.search_focus_gateway = false;
-                app.search_cursor = app.search_name.chars().count();
+                app.search.focus_gateway = false;
+                app.search.cursor = app.search.name.chars().count();
             }
             KeyCode::Char('m') => {
                 app.view = crate::app::View::Main;
             }
             KeyCode::Char('r') => {
                 app.view = crate::app::View::Replays;
-                if app.replay_toon_input.is_empty() {
+                if app.replay.toon_input.is_empty() {
                     if let Some(name) = &app.self_profile_name {
-                        app.replay_toon_input = name.clone();
-                        app.replay_toon_cursor = app.replay_toon_input.chars().count();
+                        app.replay.toon_input = name.clone();
+                        app.replay.toon_cursor = app.replay.toon_input.chars().count();
                     }
                 }
                 if let Some(gw) = app.self_gateway {
-                    app.replay_input_gateway = gw;
+                    app.replay.input_gateway = gw;
                 }
-                app.replay_focus = crate::app::ReplayFocus::Toon;
-                app.replay_last_error = None;
+                app.replay.focus = crate::app::ReplayFocus::Toon;
+                app.replay.last_error = None;
             }
             KeyCode::Char('p') => {
                 app.view = crate::app::View::Players;
-                app.players_scroll = 0;
-                app.player_search_cursor = app.player_search_query.chars().count();
+                app.players.scroll = 0;
+                app.players.search_cursor = app.players.search_query.chars().count();
             }
             KeyCode::Char('q') => {
                 app.should_quit = true;
@@ -133,17 +133,18 @@ pub fn handle_mouse_event(app: &mut App, me: MouseEvent) {
                 }
             }
             crate::app::View::Search => {
-                if let Some(rect) = app.search_other_toons_rect {
+                if let Some(rect) = app.search.other_toons_rect {
                     if x >= rect.x && y >= rect.y && y < rect.y + rect.height {
                         let idx = (y - rect.y) as usize;
-                        if idx < app.search_other_toons_data.len() {
+                        if idx < app.search.other_toons_data.len() {
                             let text_width = app
-                                .search_other_toons
+                                .search
+                                .other_toons
                                 .get(idx)
                                 .map(|s| s.chars().count() as u16)
                                 .unwrap_or(0);
                             if x < rect.x + text_width {
-                                let (toon, gw, _r) = app.search_other_toons_data[idx].clone();
+                                let (toon, gw, _r) = app.search.other_toons_data[idx].clone();
                                 app.begin_search(toon, gw);
                             }
                         }

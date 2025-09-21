@@ -92,7 +92,7 @@ impl AppRuntime {
                     tracing::error!(error = %err, "fetch self profile failed");
                     self.app.last_profile_text = some_text("Profile error", &err);
                 }
-                if self.app.search_in_progress
+                if self.app.search.in_progress
                     && let Err(err) = SearchService::run(&mut self.app)
                 {
                     tracing::warn!(error = %err, "search run failed");
@@ -153,8 +153,12 @@ impl AppRuntime {
         }
         self.history = Some(history);
 
-        match PlayerDirectory::load() {
-            Ok(directory) => self.app.set_player_directory(directory),
+        match PlayerDirectory::load_optional() {
+            Ok(Some(directory)) => self.app.set_player_directory(directory),
+            Ok(None) => {
+                self.app.mark_player_directory_missing();
+                tracing::info!("player list not bundled; players view disabled");
+            }
             Err(err) => tracing::error!(error = %err, "failed to load player list"),
         }
 
@@ -169,17 +173,17 @@ impl AppRuntime {
     }
 
     fn handle_pending_replay_download(&mut self) -> Result<(), AppError> {
-        if !self.app.replay_should_start {
+        if !self.app.replay.should_start {
             return Ok(());
         }
-        self.app.replay_should_start = false;
-        if self.app.replay_in_progress {
-            self.app.replay_last_error = Some("Replay download already running".to_string());
+        self.app.replay.should_start = false;
+        if self.app.replay.in_progress {
+            self.app.replay.last_error = Some("Replay download already running".to_string());
             return Ok(());
         }
-        let toon = self.app.replay_toon_input.trim();
+        let toon = self.app.replay.toon_input.trim();
         if toon.is_empty() {
-            self.app.replay_last_error = Some("Enter a profile name first".to_string());
+            self.app.replay.last_error = Some("Enter a profile name first".to_string());
             return Ok(());
         }
         let port = self
@@ -188,42 +192,50 @@ impl AppRuntime {
             .or(self.app.last_port_used)
             .unwrap_or_default();
         if port == 0 {
-            self.app.replay_last_error = Some("No API port detected".to_string());
+            self.app.replay.last_error = Some("No API port detected".to_string());
             return Ok(());
         }
         let base_url = format!("http://127.0.0.1:{port}");
         let request = ReplayDownloadRequest {
             toon: toon.to_string(),
-            gateway: self.app.replay_input_gateway,
-            matchup: match self.app.replay_matchup_input.trim() {
+            gateway: self.app.replay.input_gateway,
+            matchup: match self.app.replay.matchup_input.trim() {
                 "" => None,
                 other => Some(other.to_string()),
             },
-            limit: self.app.replay_input_count.max(1) as usize,
-            alias: match self.app.replay_alias_input.trim() {
+            limit: self.app.replay.input_count.max(1) as usize,
+            alias: match self.app.replay.alias_input.trim() {
                 "" => None,
                 other => Some(other.to_string()),
             },
         };
 
-        if let Some(handle) = self.app.replay_job_handle.take() {
+        if let Some(handle) = self.app.replay.job_handle.take() {
             let _ = handle.join();
         }
-        self.app.replay_last_error = None;
-        self.app.replay_last_summary = None;
-        self.app.replay_last_request = Some(request.clone());
+        self.app.replay.last_error = None;
+        self.app.replay.last_summary = None;
+        self.app.replay.last_request = Some(request.clone());
 
         let cfg = self.cfg.clone();
         let (handle, rx) = crate::replay_download::spawn_download_job(base_url, cfg, request);
-        self.app.replay_job_rx = Some(rx);
-        self.app.replay_job_handle = Some(handle);
-        self.app.replay_in_progress = true;
+        self.app.replay.job_rx = Some(rx);
+        self.app.replay.job_handle = Some(handle);
+        self.app.replay.in_progress = true;
         Ok(())
     }
 }
 
-fn some_text(prefix: &str, err: &dyn std::fmt::Display) -> Option<String> {
-    Some(format!("{prefix}: {err}"))
+fn some_text<E>(prefix: &str, err: &E) -> Option<String>
+where
+    E: std::fmt::Display + std::fmt::Debug,
+{
+    let mut rendered = String::new();
+    if std::fmt::write(&mut rendered, format_args!("{err}")).is_err() {
+        tracing::error!(error = ?err, "failed to format error for debug text");
+        rendered = format!("{err:?}");
+    }
+    Some(format!("{prefix}: {rendered}"))
 }
 
 struct DetectionEngine {

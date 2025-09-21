@@ -4,7 +4,6 @@ use anyhow::{Context, Result, anyhow};
 use chrome_cache_parser::ChromeCache;
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use percent_encoding::percent_decode_str;
-use std::panic::{AssertUnwindSafe, catch_unwind};
 use url::Url;
 
 fn extract_port(url: &str) -> Option<u16> {
@@ -68,64 +67,39 @@ impl CacheReader {
     }
 
     fn load_cache(cache_dir: &Path, action: &str) -> Result<ChromeCache> {
-        let path = cache_dir.to_path_buf();
-        match catch_unwind(AssertUnwindSafe(move || {
-            ChromeCache::from_path(path.clone())
-        })) {
-            Ok(Ok(cache)) => Ok(cache),
-            Ok(Err(err)) => Err(anyhow!(
+        ChromeCache::from_path(cache_dir.to_path_buf()).map_err(|err| {
+            anyhow!(
                 "Failed to {} Chrome cache at {}: {}",
                 action,
                 cache_dir.display(),
                 err
-            )),
-            Err(_) => Err(anyhow!(
-                "Chrome cache {} panicked (transient cache rotation)",
-                action
-            )),
-        }
-    }
-
-    fn scan_with_retry<T, F>(&mut self, mut op: F) -> Result<T>
-    where
-        F: FnMut(&ChromeCache) -> Result<T>,
-    {
-        match catch_unwind(AssertUnwindSafe(|| op(&self.cache))) {
-            Ok(res) => res,
-            Err(_) => {
-                self.refresh()
-                    .context("refresh cache after rotation panicked")?;
-                match catch_unwind(AssertUnwindSafe(|| op(&self.cache))) {
-                    Ok(res) => res,
-                    Err(_) => Err(anyhow!("Cache scan panicked (transient cache rotation)")),
-                }
-            }
-        }
+            )
+        })
     }
 
     pub fn parse_for_port(&mut self, window_secs: i64) -> Result<Option<u16>> {
-        self.scan_with_retry(|cache| {
-            let now = Utc::now();
-            let entries = cache.entries().context("Failed to read cache entries")?;
-            let latest = entries
-                .filter_map(|e| {
-                    let entry = e.get().ok()?;
-                    let key = entry.key.to_string();
-                    if !key.contains("/web-api/") {
-                        return None;
-                    }
-                    let creation_time: DateTime<Utc> =
-                        entry.creation_time.into_datetime_utc().ok()?;
-                    if (now - creation_time) >= ChronoDuration::seconds(window_secs) {
-                        return None;
-                    }
-                    let port = extract_port(&key)?;
-                    Some((port, creation_time))
-                })
-                .max_by_key(|(_, ct)| *ct)
-                .map(|(p, _)| p);
-            Ok(latest)
-        })
+        let now = Utc::now();
+        let entries = self
+            .cache
+            .entries()
+            .context("Failed to read cache entries")?;
+        let latest = entries
+            .filter_map(|e| {
+                let entry = e.get().ok()?;
+                let key = entry.key.to_string();
+                if !key.contains("/web-api/") {
+                    return None;
+                }
+                let creation_time: DateTime<Utc> = entry.creation_time.into_datetime_utc().ok()?;
+                if (now - creation_time) >= ChronoDuration::seconds(window_secs) {
+                    return None;
+                }
+                let port = extract_port(&key)?;
+                Some((port, creation_time))
+            })
+            .max_by_key(|(_, ct)| *ct)
+            .map(|(p, _)| p);
+        Ok(latest)
     }
 
     #[allow(clippy::collapsible_if)]
@@ -134,122 +108,122 @@ impl CacheReader {
         exclude_name: Option<&str>,
         window_secs: i64,
     ) -> Result<Option<(String, u16)>> {
-        self.scan_with_retry(|cache| {
-            let now = Utc::now();
-            let entries = cache.entries().context("Failed to read cache entries")?;
-            let latest = entries
-                .filter_map(|e| {
-                    let entry = e.get().ok()?;
-                    let key = entry.key.to_string();
-                    if !(key.contains("/web-api/v2/aurora-profile-by-toon/")
-                        && key.contains("scr_mmgameloading"))
-                    {
+        let now = Utc::now();
+        let entries = self
+            .cache
+            .entries()
+            .context("Failed to read cache entries")?;
+        let latest = entries
+            .filter_map(|e| {
+                let entry = e.get().ok()?;
+                let key = entry.key.to_string();
+                if !(key.contains("/web-api/v2/aurora-profile-by-toon/")
+                    && key.contains("scr_mmgameloading"))
+                {
+                    return None;
+                }
+                let creation_time: DateTime<Utc> = entry.creation_time.into_datetime_utc().ok()?;
+                if (now - creation_time) >= ChronoDuration::seconds(window_secs) {
+                    return None;
+                }
+                let (profile, gateway) = parse_profile_from_url_mmgameloading(&key)?;
+                if let Some(ex) = exclude_name {
+                    if profile.eq_ignore_ascii_case(ex) {
                         return None;
                     }
-                    let creation_time: DateTime<Utc> =
-                        entry.creation_time.into_datetime_utc().ok()?;
-                    if (now - creation_time) >= ChronoDuration::seconds(window_secs) {
-                        return None;
-                    }
-                    let (profile, gateway) = parse_profile_from_url_mmgameloading(&key)?;
-                    if let Some(ex) = exclude_name {
-                        if profile.eq_ignore_ascii_case(ex) {
-                            return None;
-                        }
-                    }
-                    Some(((profile, gateway), creation_time))
-                })
-                .max_by_key(|(_, ct)| *ct)
-                .map(|(data, _)| data);
-            Ok(latest)
-        })
+                }
+                Some(((profile, gateway), creation_time))
+            })
+            .max_by_key(|(_, ct)| *ct)
+            .map(|(data, _)| data);
+        Ok(latest)
     }
 
     pub fn latest_mmgameloading_profile(
         &mut self,
         window_secs: i64,
     ) -> Result<Option<(String, u16)>> {
-        self.scan_with_retry(|cache| {
-            let now = Utc::now();
-            let entries = cache.entries().context("Failed to read cache entries")?;
-            let latest = entries
-                .filter_map(|e| {
-                    let entry = e.get().ok()?;
-                    let key = entry.key.to_string();
-                    if !(key.contains("/web-api/v2/aurora-profile-by-toon/")
-                        && key.contains("scr_mmgameloading"))
-                    {
-                        return None;
-                    }
-                    let creation_time: DateTime<Utc> =
-                        entry.creation_time.into_datetime_utc().ok()?;
-                    if (now - creation_time) >= ChronoDuration::seconds(window_secs) {
-                        return None;
-                    }
-                    let (profile, gateway) = parse_profile_from_url_mmgameloading(&key)?;
-                    Some(((profile, gateway), creation_time))
-                })
-                .max_by_key(|(_, ct)| *ct)
-                .map(|(data, _)| data);
-            Ok(latest)
-        })
+        let now = Utc::now();
+        let entries = self
+            .cache
+            .entries()
+            .context("Failed to read cache entries")?;
+        let latest = entries
+            .filter_map(|e| {
+                let entry = e.get().ok()?;
+                let key = entry.key.to_string();
+                if !(key.contains("/web-api/v2/aurora-profile-by-toon/")
+                    && key.contains("scr_mmgameloading"))
+                {
+                    return None;
+                }
+                let creation_time: DateTime<Utc> = entry.creation_time.into_datetime_utc().ok()?;
+                if (now - creation_time) >= ChronoDuration::seconds(window_secs) {
+                    return None;
+                }
+                let (profile, gateway) = parse_profile_from_url_mmgameloading(&key)?;
+                Some(((profile, gateway), creation_time))
+            })
+            .max_by_key(|(_, ct)| *ct)
+            .map(|(data, _)| data);
+        Ok(latest)
     }
 
     pub fn latest_self_profile(&mut self, window_secs: i64) -> Result<Option<(String, u16)>> {
-        self.scan_with_retry(|cache| {
-            let now = Utc::now();
-            let entries = cache.entries().context("Failed to read cache entries")?;
-            let latest = entries
-                .filter_map(|e| {
-                    let entry = e.get().ok()?;
-                    let key = entry.key.to_string();
-                    if !(key.contains("/web-api/v2/aurora-profile-by-toon/")
-                        && key.contains("scr_tooninfo"))
-                    {
-                        return None;
-                    }
-                    let creation_time: DateTime<Utc> =
-                        entry.creation_time.into_datetime_utc().ok()?;
-                    if (now - creation_time) >= ChronoDuration::seconds(window_secs) {
-                        return None;
-                    }
-                    let (profile, gw) = parse_profile_from_url_path(&key)?;
-                    Some(((profile, gw), creation_time))
-                })
-                .max_by_key(|(_, creation_time)| *creation_time)
-                .map(|(data, _)| data);
-            Ok(latest)
-        })
+        let now = Utc::now();
+        let entries = self
+            .cache
+            .entries()
+            .context("Failed to read cache entries")?;
+        let latest = entries
+            .filter_map(|e| {
+                let entry = e.get().ok()?;
+                let key = entry.key.to_string();
+                if !(key.contains("/web-api/v2/aurora-profile-by-toon/")
+                    && key.contains("scr_tooninfo"))
+                {
+                    return None;
+                }
+                let creation_time: DateTime<Utc> = entry.creation_time.into_datetime_utc().ok()?;
+                if (now - creation_time) >= ChronoDuration::seconds(window_secs) {
+                    return None;
+                }
+                let (profile, gw) = parse_profile_from_url_path(&key)?;
+                Some(((profile, gw), creation_time))
+            })
+            .max_by_key(|(_, creation_time)| *creation_time)
+            .map(|(data, _)| data);
+        Ok(latest)
     }
 
     pub fn recent_keys(&mut self, window_secs: i64, max: usize) -> Result<Vec<(String, i64)>> {
-        self.scan_with_retry(|cache| {
-            let now = Utc::now();
-            let entries = cache.entries().context("Failed to read cache entries")?;
-            let mut items: Vec<(String, i64, DateTime<Utc>)> = entries
-                .filter_map(|e| {
-                    let entry = e.get().ok()?;
-                    let key = entry.key.to_string();
-                    if !key.contains("/web-api/") {
-                        return None;
-                    }
-                    let creation_time: DateTime<Utc> =
-                        entry.creation_time.into_datetime_utc().ok()?;
-                    let age = (now - creation_time).num_seconds();
-                    if age <= window_secs {
-                        Some((key, age, creation_time))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            items.sort_by_key(|(_, _, ct)| *ct);
-            items.reverse();
-            Ok(items
-                .into_iter()
-                .take(max)
-                .map(|(k, age, _)| (k, age))
-                .collect())
-        })
+        let now = Utc::now();
+        let entries = self
+            .cache
+            .entries()
+            .context("Failed to read cache entries")?;
+        let mut items: Vec<(String, i64, DateTime<Utc>)> = entries
+            .filter_map(|e| {
+                let entry = e.get().ok()?;
+                let key = entry.key.to_string();
+                if !key.contains("/web-api/") {
+                    return None;
+                }
+                let creation_time: DateTime<Utc> = entry.creation_time.into_datetime_utc().ok()?;
+                let age = (now - creation_time).num_seconds();
+                if age <= window_secs {
+                    Some((key, age, creation_time))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        items.sort_by_key(|(_, _, ct)| *ct);
+        items.reverse();
+        Ok(items
+            .into_iter()
+            .take(max)
+            .map(|(k, age, _)| (k, age))
+            .collect())
     }
 }

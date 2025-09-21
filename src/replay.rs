@@ -202,6 +202,10 @@ fn update_opponent_history(
                 match api.get_scr_profile(name, gw) {
                     Ok(profile) => {
                         history_update = Some(derive_wl_and_race(&profile, name, opp_name));
+
+                        let (mr, lines, _results) = api.profile_stats_last100(&profile, name);
+                        app.self_main_race = mr;
+                        app.self_matchups = lines;
                     }
                     Err(err) => {
                         tracing::error!(error = %err, "failed to refresh self profile after replay");

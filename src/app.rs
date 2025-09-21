@@ -2,6 +2,7 @@ use crate::api::ApiHandle;
 use crate::history::OpponentRecord;
 use crate::players::{PlayerDirectory, PlayerEntry};
 use crate::replay_download::{ReplayDownloadRequest, ReplayDownloadSummary, ReplayStorage};
+use crossterm::event::KeyCode;
 use ratatui::layout::Rect;
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, TryRecvError};
@@ -24,6 +25,98 @@ pub enum ReplayFocus {
     Gateway,
     Matchup,
     Count,
+}
+
+#[derive(Debug)]
+pub struct SearchState {
+    pub name: String,
+    pub gateway: u16,
+    pub focus_gateway: bool,
+    pub in_progress: bool,
+    pub rating: Option<u32>,
+    pub other_toons: Vec<String>,
+    pub other_toons_data: Vec<(String, u16, u32)>,
+    pub matches: Vec<String>,
+    pub error: Option<String>,
+    pub matches_scroll: u16,
+    pub cursor: usize,
+    pub main_race: Option<String>,
+    pub matchups: Vec<String>,
+    pub other_toons_rect: Option<Rect>,
+}
+
+impl Default for SearchState {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            gateway: 10,
+            focus_gateway: false,
+            in_progress: false,
+            rating: None,
+            other_toons: Vec::new(),
+            other_toons_data: Vec::new(),
+            matches: Vec::new(),
+            error: None,
+            matches_scroll: 0,
+            cursor: 0,
+            main_race: None,
+            matchups: Vec::new(),
+            other_toons_rect: None,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ReplayState {
+    pub focus: ReplayFocus,
+    pub toon_input: String,
+    pub toon_cursor: usize,
+    pub matchup_input: String,
+    pub matchup_cursor: usize,
+    pub alias_input: String,
+    pub alias_cursor: usize,
+    pub input_gateway: u16,
+    pub input_count: u16,
+    pub in_progress: bool,
+    pub should_start: bool,
+    pub last_summary: Option<ReplayDownloadSummary>,
+    pub last_request: Option<ReplayDownloadRequest>,
+    pub last_error: Option<String>,
+    pub job_rx: Option<Receiver<ReplayDownloadSummary>>,
+    pub job_handle: Option<JoinHandle<()>>,
+}
+
+impl Default for ReplayState {
+    fn default() -> Self {
+        Self {
+            focus: ReplayFocus::Toon,
+            toon_input: String::new(),
+            toon_cursor: 0,
+            matchup_input: String::new(),
+            matchup_cursor: 0,
+            alias_input: String::new(),
+            alias_cursor: 0,
+            input_gateway: 10,
+            input_count: 5,
+            in_progress: false,
+            should_start: false,
+            last_summary: None,
+            last_request: None,
+            last_error: None,
+            job_rx: None,
+            job_handle: None,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct PlayersState {
+    pub directory: Option<PlayerDirectory>,
+    pub scroll: u16,
+    pub filtered: Vec<PlayerEntry>,
+    pub search_query: String,
+    pub search_cursor: usize,
+    pub missing_data: bool,
 }
 
 pub struct App {
@@ -61,50 +154,16 @@ pub struct App {
     pub rating_retry_next_at: Option<Instant>,
     pub rating_retry_baseline: Option<u32>,
     pub replay_storage: Option<ReplayStorage>,
-    pub replay_focus: ReplayFocus,
-    pub replay_toon_input: String,
-    pub replay_toon_cursor: usize,
-    pub replay_matchup_input: String,
-    pub replay_matchup_cursor: usize,
-    pub replay_alias_input: String,
-    pub replay_alias_cursor: usize,
-    pub replay_input_gateway: u16,
-    pub replay_input_count: u16,
-    pub replay_in_progress: bool,
-    pub replay_should_start: bool,
-    pub replay_last_summary: Option<ReplayDownloadSummary>,
-    pub replay_last_request: Option<ReplayDownloadRequest>,
-    pub replay_last_error: Option<String>,
-    pub replay_job_rx: Option<Receiver<ReplayDownloadSummary>>,
-    pub replay_job_handle: Option<JoinHandle<()>>,
-
-    // Search view state
-    pub search_name: String,
-    pub search_gateway: u16,
-    pub search_focus_gateway: bool,
-    pub search_in_progress: bool,
-    pub search_rating: Option<u32>,
-    pub search_other_toons: Vec<String>,
-    pub search_other_toons_data: Vec<(String, u16, u32)>,
-    pub search_matches: Vec<String>,
-    pub search_error: Option<String>,
-    pub search_matches_scroll: u16,
-    pub search_cursor: usize,
-    pub search_main_race: Option<String>,
-    pub search_matchups: Vec<String>,
+    pub replay: ReplayState,
+    pub search: SearchState,
     // Clickable regions
     pub status_opponent_rect: Option<Rect>,
     pub main_opponent_toons_rect: Option<Rect>,
-    pub search_other_toons_rect: Option<Rect>,
     // Self stats for main view
     pub self_main_race: Option<String>,
     pub self_matchups: Vec<String>,
     // Player directory view
-    pub player_directory: Option<PlayerDirectory>,
-    pub players_scroll: u16,
-    pub players_filtered: Vec<PlayerEntry>,
-    pub player_search_query: String,
-    pub player_search_cursor: usize,
+    pub players: PlayersState,
 }
 
 impl App {
@@ -120,542 +179,578 @@ impl App {
 
     pub fn begin_search(&mut self, name: String, gateway: u16) {
         self.view = View::Search;
-        self.search_name = name;
-        self.search_gateway = gateway;
-        self.search_focus_gateway = false;
-        self.search_cursor = self.search_name.chars().count();
-        self.search_matches_scroll = 0;
-        self.search_in_progress = true;
+        self.search.name = name;
+        self.search.gateway = gateway;
+        self.search.focus_gateway = false;
+        self.search.cursor = self.search.name.chars().count();
+        self.search.matches_scroll = 0;
+        self.search.in_progress = true;
     }
 
     #[allow(clippy::collapsible_if)]
-    pub fn on_key(&mut self, code: crossterm::event::KeyCode) {
-        if self.view == View::Replays {
-            match code {
-                crossterm::event::KeyCode::Tab => {
-                    self.replay_focus = match self.replay_focus {
-                        ReplayFocus::Toon => ReplayFocus::Alias,
-                        ReplayFocus::Alias => ReplayFocus::Gateway,
-                        ReplayFocus::Gateway => ReplayFocus::Matchup,
-                        ReplayFocus::Matchup => ReplayFocus::Count,
-                        ReplayFocus::Count => ReplayFocus::Toon,
-                    };
-                }
-                crossterm::event::KeyCode::BackTab => {
-                    self.replay_focus = match self.replay_focus {
-                        ReplayFocus::Toon => ReplayFocus::Count,
-                        ReplayFocus::Alias => ReplayFocus::Toon,
-                        ReplayFocus::Gateway => ReplayFocus::Alias,
-                        ReplayFocus::Matchup => ReplayFocus::Gateway,
-                        ReplayFocus::Count => ReplayFocus::Matchup,
-                    };
-                }
-                crossterm::event::KeyCode::Left => match self.replay_focus {
-                    ReplayFocus::Toon => {
-                        if self.replay_toon_cursor > 0 {
-                            self.replay_toon_cursor -= 1;
-                        }
-                    }
-                    ReplayFocus::Alias => {
-                        if self.replay_alias_cursor > 0 {
-                            self.replay_alias_cursor -= 1;
-                        }
-                    }
-                    ReplayFocus::Gateway => {
-                        self.replay_gateway_prev();
-                    }
-                    ReplayFocus::Matchup => {
-                        if self.replay_matchup_cursor > 0 {
-                            self.replay_matchup_cursor -= 1;
-                        }
-                    }
-                    ReplayFocus::Count => {
-                        if self.replay_input_count > 1 {
-                            self.replay_input_count -= 1;
-                        }
-                    }
-                },
-                crossterm::event::KeyCode::Right => match self.replay_focus {
-                    ReplayFocus::Toon => {
-                        let len = self.replay_toon_input.chars().count();
-                        if self.replay_toon_cursor < len {
-                            self.replay_toon_cursor += 1;
-                        }
-                    }
-                    ReplayFocus::Alias => {
-                        let len = self.replay_alias_input.chars().count();
-                        if self.replay_alias_cursor < len {
-                            self.replay_alias_cursor += 1;
-                        }
-                    }
-                    ReplayFocus::Gateway => {
-                        self.replay_gateway_next();
-                    }
-                    ReplayFocus::Matchup => {
-                        let len = self.replay_matchup_input.chars().count();
-                        if self.replay_matchup_cursor < len {
-                            self.replay_matchup_cursor += 1;
-                        }
-                    }
-                    ReplayFocus::Count => {
-                        self.replay_input_count = self.replay_input_count.saturating_add(1);
-                    }
-                },
-                crossterm::event::KeyCode::Up => {
-                    if matches!(self.replay_focus, ReplayFocus::Count) {
-                        self.replay_input_count = self.replay_input_count.saturating_add(1);
-                    }
-                }
-                crossterm::event::KeyCode::Down => {
-                    if matches!(self.replay_focus, ReplayFocus::Count) {
-                        if self.replay_input_count > 1 {
-                            self.replay_input_count -= 1;
-                        }
-                    }
-                }
-                crossterm::event::KeyCode::Home => match self.replay_focus {
-                    ReplayFocus::Toon => {
-                        self.replay_toon_cursor = 0;
-                    }
-                    ReplayFocus::Alias => {
-                        self.replay_alias_cursor = 0;
-                    }
-                    ReplayFocus::Matchup => {
-                        self.replay_matchup_cursor = 0;
-                    }
-                    _ => {}
-                },
-                crossterm::event::KeyCode::End => match self.replay_focus {
-                    ReplayFocus::Toon => {
-                        self.replay_toon_cursor = self.replay_toon_input.chars().count();
-                    }
-                    ReplayFocus::Alias => {
-                        self.replay_alias_cursor = self.replay_alias_input.chars().count();
-                    }
-                    ReplayFocus::Matchup => {
-                        self.replay_matchup_cursor = self.replay_matchup_input.chars().count();
-                    }
-                    _ => {}
-                },
-                crossterm::event::KeyCode::Backspace => match self.replay_focus {
-                    ReplayFocus::Toon => {
-                        if self.replay_toon_cursor > 0 {
-                            let before: String = self
-                                .replay_toon_input
-                                .chars()
-                                .take(self.replay_toon_cursor - 1)
-                                .collect();
-                            let after: String = self
-                                .replay_toon_input
-                                .chars()
-                                .skip(self.replay_toon_cursor)
-                                .collect();
-                            self.replay_toon_input = before + &after;
-                            self.replay_toon_cursor -= 1;
-                        }
-                    }
-                    ReplayFocus::Alias => {
-                        if self.replay_alias_cursor > 0 {
-                            let before: String = self
-                                .replay_alias_input
-                                .chars()
-                                .take(self.replay_alias_cursor - 1)
-                                .collect();
-                            let after: String = self
-                                .replay_alias_input
-                                .chars()
-                                .skip(self.replay_alias_cursor)
-                                .collect();
-                            self.replay_alias_input = before + &after;
-                            self.replay_alias_cursor -= 1;
-                        }
-                    }
-                    ReplayFocus::Matchup => {
-                        if self.replay_matchup_cursor > 0 {
-                            let before: String = self
-                                .replay_matchup_input
-                                .chars()
-                                .take(self.replay_matchup_cursor - 1)
-                                .collect();
-                            let after: String = self
-                                .replay_matchup_input
-                                .chars()
-                                .skip(self.replay_matchup_cursor)
-                                .collect();
-                            self.replay_matchup_input = before + &after;
-                            self.replay_matchup_cursor -= 1;
-                        }
-                    }
-                    _ => {}
-                },
-                crossterm::event::KeyCode::Delete => match self.replay_focus {
-                    ReplayFocus::Toon => {
-                        let len = self.replay_toon_input.chars().count();
-                        if self.replay_toon_cursor < len {
-                            let before: String = self
-                                .replay_toon_input
-                                .chars()
-                                .take(self.replay_toon_cursor)
-                                .collect();
-                            let after: String = self
-                                .replay_toon_input
-                                .chars()
-                                .skip(self.replay_toon_cursor + 1)
-                                .collect();
-                            self.replay_toon_input = before + &after;
-                        }
-                    }
-                    ReplayFocus::Alias => {
-                        let len = self.replay_alias_input.chars().count();
-                        if self.replay_alias_cursor < len {
-                            let before: String = self
-                                .replay_alias_input
-                                .chars()
-                                .take(self.replay_alias_cursor)
-                                .collect();
-                            let after: String = self
-                                .replay_alias_input
-                                .chars()
-                                .skip(self.replay_alias_cursor + 1)
-                                .collect();
-                            self.replay_alias_input = before + &after;
-                        }
-                    }
-                    ReplayFocus::Matchup => {
-                        let len = self.replay_matchup_input.chars().count();
-                        if self.replay_matchup_cursor < len {
-                            let before: String = self
-                                .replay_matchup_input
-                                .chars()
-                                .take(self.replay_matchup_cursor)
-                                .collect();
-                            let after: String = self
-                                .replay_matchup_input
-                                .chars()
-                                .skip(self.replay_matchup_cursor + 1)
-                                .collect();
-                            self.replay_matchup_input = before + &after;
-                        }
-                    }
-                    _ => {}
-                },
-                crossterm::event::KeyCode::Char(c) => match self.replay_focus {
-                    ReplayFocus::Toon => {
-                        let len = self.replay_toon_input.chars().count();
-                        if self.replay_toon_cursor >= len {
-                            self.replay_toon_input.push(c);
-                        } else {
-                            let before: String = self
-                                .replay_toon_input
-                                .chars()
-                                .take(self.replay_toon_cursor)
-                                .collect();
-                            let after: String = self
-                                .replay_toon_input
-                                .chars()
-                                .skip(self.replay_toon_cursor)
-                                .collect();
-                            self.replay_toon_input = before + &c.to_string() + &after;
-                        }
-                        self.replay_toon_cursor += 1;
-                    }
-                    ReplayFocus::Alias => {
-                        let len = self.replay_alias_input.chars().count();
-                        if self.replay_alias_cursor >= len {
-                            self.replay_alias_input.push(c);
-                        } else {
-                            let before: String = self
-                                .replay_alias_input
-                                .chars()
-                                .take(self.replay_alias_cursor)
-                                .collect();
-                            let after: String = self
-                                .replay_alias_input
-                                .chars()
-                                .skip(self.replay_alias_cursor)
-                                .collect();
-                            self.replay_alias_input = before + &c.to_string() + &after;
-                        }
-                        self.replay_alias_cursor += 1;
-                    }
-                    ReplayFocus::Matchup => {
-                        let len = self.replay_matchup_input.chars().count();
-                        if self.replay_matchup_cursor >= len {
-                            self.replay_matchup_input.push(c);
-                        } else {
-                            let before: String = self
-                                .replay_matchup_input
-                                .chars()
-                                .take(self.replay_matchup_cursor)
-                                .collect();
-                            let after: String = self
-                                .replay_matchup_input
-                                .chars()
-                                .skip(self.replay_matchup_cursor)
-                                .collect();
-                            self.replay_matchup_input = before + &c.to_string() + &after;
-                        }
-                        self.replay_matchup_cursor += 1;
-                    }
-                    ReplayFocus::Count => {
-                        if c.is_ascii_digit() {
-                            let digit = c.to_digit(10).unwrap_or(0) as u16;
-                            self.replay_input_count = digit.max(1);
-                        }
-                    }
-                    ReplayFocus::Gateway => {}
-                },
-                crossterm::event::KeyCode::Enter => {
-                    self.replay_should_start = true;
-                }
-                _ => {}
+    pub fn on_key(&mut self, code: KeyCode) {
+        match self.view {
+            View::Replays => {
+                self.handle_replay_key(code);
+                return;
             }
-            return;
+            View::Search => {
+                self.handle_search_key(code);
+                return;
+            }
+            View::Players => {
+                if self.handle_players_key(code) {
+                    return;
+                }
+            }
+            View::Main | View::Debug => {}
         }
 
-        // If we are in Search view, handle input locally and do not trigger global hotkeys
-        if self.view == View::Search {
-            match code {
-                crossterm::event::KeyCode::Tab => {
-                    self.search_focus_gateway = !self.search_focus_gateway;
-                }
-                crossterm::event::KeyCode::Left => {
-                    if self.search_focus_gateway {
-                        self.gateway_prev();
-                    } else if self.search_cursor > 0 {
-                        self.search_cursor -= 1;
-                    }
-                }
-                crossterm::event::KeyCode::Right => {
-                    if self.search_focus_gateway {
-                        self.gateway_next();
-                    } else {
-                        let len = self.search_name.chars().count();
-                        if self.search_cursor < len {
-                            self.search_cursor += 1;
-                        }
-                    }
-                }
-                crossterm::event::KeyCode::Backspace => {
-                    if !self.search_focus_gateway {
-                        if self.search_cursor > 0 {
-                            let before: String = self
-                                .search_name
-                                .chars()
-                                .take(self.search_cursor - 1)
-                                .collect();
-                            let after: String =
-                                self.search_name.chars().skip(self.search_cursor).collect();
-                            self.search_name = before + &after;
-                            self.search_cursor -= 1;
-                            self.clamp_search_cursor();
-                        }
-                    }
-                }
-                crossterm::event::KeyCode::Enter => {
-                    self.search_in_progress = true;
-                    self.search_error = None;
-                    self.search_matches_scroll = 0;
-                }
-                crossterm::event::KeyCode::Home => {
-                    if !self.search_focus_gateway {
-                        self.search_cursor = 0;
-                    }
-                }
-                crossterm::event::KeyCode::End => {
-                    if !self.search_focus_gateway {
-                        self.search_cursor = self.search_name.chars().count();
-                    }
-                }
-                crossterm::event::KeyCode::Delete => {
-                    if !self.search_focus_gateway {
-                        let len = self.search_name.chars().count();
-                        if self.search_cursor < len {
-                            let before: String =
-                                self.search_name.chars().take(self.search_cursor).collect();
-                            let after: String = self
-                                .search_name
-                                .chars()
-                                .skip(self.search_cursor + 1)
-                                .collect();
-                            self.search_name = before + &after;
-                        }
-                    }
-                }
-                crossterm::event::KeyCode::Char(c) => {
-                    if !self.search_focus_gateway {
-                        let len = self.search_name.chars().count();
-                        if self.search_cursor >= len {
-                            self.search_name.push(c);
-                        } else {
-                            let before: String =
-                                self.search_name.chars().take(self.search_cursor).collect();
-                            let after: String =
-                                self.search_name.chars().skip(self.search_cursor).collect();
-                            self.search_name = before + &c.to_string() + &after;
-                        }
-                        self.search_cursor += 1;
-                    }
-                }
-                crossterm::event::KeyCode::Up => {
-                    self.search_matches_scroll = self.search_matches_scroll.saturating_sub(1);
-                }
-                crossterm::event::KeyCode::Down => {
-                    self.search_matches_scroll = self.search_matches_scroll.saturating_add(1);
-                }
-                crossterm::event::KeyCode::PageUp => {
-                    self.search_matches_scroll = self.search_matches_scroll.saturating_sub(10);
-                }
-                crossterm::event::KeyCode::PageDown => {
-                    self.search_matches_scroll = self.search_matches_scroll.saturating_add(10);
-                }
-                // Note: Home/End handled for name editing above; matches panel scroll uses Up/Down/Page keys
-                _ => {}
-            }
-            return;
-        }
+        self.handle_global_navigation_key(code);
 
-        if self.view == View::Players {
-            match code {
-                crossterm::event::KeyCode::Left => {
-                    if self.player_search_cursor > 0 {
-                        self.player_search_cursor -= 1;
-                    }
-                    return;
-                }
-                crossterm::event::KeyCode::Right => {
-                    let len = self.player_search_query.chars().count();
-                    if self.player_search_cursor < len {
-                        self.player_search_cursor += 1;
-                    }
-                    return;
-                }
-                crossterm::event::KeyCode::Home => {
-                    self.player_search_cursor = 0;
-                    return;
-                }
-                crossterm::event::KeyCode::End => {
-                    self.player_search_cursor = self.player_search_query.chars().count();
-                    return;
-                }
-                crossterm::event::KeyCode::Backspace => {
-                    if self.player_search_cursor > 0 {
-                        let mut chars: Vec<char> = self.player_search_query.chars().collect();
-                        let idx = self.player_search_cursor - 1;
-                        if idx < chars.len() {
-                            chars.remove(idx);
-                            self.player_search_query = chars.into_iter().collect();
-                            self.player_search_cursor -= 1;
-                            self.update_player_filter();
-                        }
-                    }
-                    return;
-                }
-                crossterm::event::KeyCode::Delete => {
-                    let mut chars: Vec<char> = self.player_search_query.chars().collect();
-                    if self.player_search_cursor < chars.len() {
-                        chars.remove(self.player_search_cursor);
-                        self.player_search_query = chars.into_iter().collect();
-                        self.update_player_filter();
-                    }
-                    return;
-                }
-                crossterm::event::KeyCode::Char(c) => {
-                    let mut chars: Vec<char> = self.player_search_query.chars().collect();
-                    let idx = self.player_search_cursor.min(chars.len());
-                    chars.insert(idx, c);
-                    self.player_search_query = chars.into_iter().collect();
-                    self.player_search_cursor += 1;
-                    self.update_player_filter();
-                    return;
-                }
-                _ => {}
-            }
+        if matches!(self.view, View::Players) {
+            self.clamp_players_scroll();
         }
+    }
 
+    fn handle_replay_key(&mut self, code: KeyCode) {
         match code {
-            // Note: Global view hotkeys are handled in main (Ctrl+D/S/M)
-            crossterm::event::KeyCode::Up => {
-                if self.view == View::Debug {
-                    self.debug_scroll = self.debug_scroll.saturating_sub(1);
-                } else if self.view == View::Players {
-                    self.players_scroll = self.players_scroll.saturating_sub(1);
+            KeyCode::Tab => {
+                self.replay.focus = match self.replay.focus {
+                    ReplayFocus::Toon => ReplayFocus::Alias,
+                    ReplayFocus::Alias => ReplayFocus::Gateway,
+                    ReplayFocus::Gateway => ReplayFocus::Matchup,
+                    ReplayFocus::Matchup => ReplayFocus::Count,
+                    ReplayFocus::Count => ReplayFocus::Toon,
+                };
+            }
+            KeyCode::BackTab => {
+                self.replay.focus = match self.replay.focus {
+                    ReplayFocus::Toon => ReplayFocus::Count,
+                    ReplayFocus::Alias => ReplayFocus::Toon,
+                    ReplayFocus::Gateway => ReplayFocus::Alias,
+                    ReplayFocus::Matchup => ReplayFocus::Gateway,
+                    ReplayFocus::Count => ReplayFocus::Matchup,
+                };
+            }
+            KeyCode::Left => match self.replay.focus {
+                ReplayFocus::Toon => {
+                    if self.replay.toon_cursor > 0 {
+                        self.replay.toon_cursor -= 1;
+                    }
+                }
+                ReplayFocus::Alias => {
+                    if self.replay.alias_cursor > 0 {
+                        self.replay.alias_cursor -= 1;
+                    }
+                }
+                ReplayFocus::Gateway => {
+                    self.replay_gateway_prev();
+                }
+                ReplayFocus::Matchup => {
+                    if self.replay.matchup_cursor > 0 {
+                        self.replay.matchup_cursor -= 1;
+                    }
+                }
+                ReplayFocus::Count => {
+                    if self.replay.input_count > 1 {
+                        self.replay.input_count -= 1;
+                    }
+                }
+            },
+            KeyCode::Right => match self.replay.focus {
+                ReplayFocus::Toon => {
+                    let len = self.replay.toon_input.chars().count();
+                    if self.replay.toon_cursor < len {
+                        self.replay.toon_cursor += 1;
+                    }
+                }
+                ReplayFocus::Alias => {
+                    let len = self.replay.alias_input.chars().count();
+                    if self.replay.alias_cursor < len {
+                        self.replay.alias_cursor += 1;
+                    }
+                }
+                ReplayFocus::Gateway => {
+                    self.replay_gateway_next();
+                }
+                ReplayFocus::Matchup => {
+                    let len = self.replay.matchup_input.chars().count();
+                    if self.replay.matchup_cursor < len {
+                        self.replay.matchup_cursor += 1;
+                    }
+                }
+                ReplayFocus::Count => {
+                    self.replay.input_count = self.replay.input_count.saturating_add(1);
+                }
+            },
+            KeyCode::Up => {
+                if matches!(self.replay.focus, ReplayFocus::Count) {
+                    self.replay.input_count = self.replay.input_count.saturating_add(1);
                 }
             }
-            crossterm::event::KeyCode::Down => {
-                if self.view == View::Debug {
-                    self.debug_scroll = self.debug_scroll.saturating_add(1);
-                } else if self.view == View::Players {
-                    let max_scroll = self
-                        .players_filtered
-                        .len()
-                        .saturating_sub(1)
-                        .min(u16::MAX as usize) as u16;
-                    self.players_scroll = self.players_scroll.saturating_add(1).min(max_scroll);
+            KeyCode::Down => {
+                if matches!(self.replay.focus, ReplayFocus::Count) && self.replay.input_count > 1 {
+                    self.replay.input_count -= 1;
                 }
             }
-            crossterm::event::KeyCode::PageUp => {
-                if self.view == View::Debug {
-                    self.debug_scroll = self.debug_scroll.saturating_sub(10);
-                } else if self.view == View::Players {
-                    self.players_scroll = self.players_scroll.saturating_sub(10);
+            KeyCode::Home => match self.replay.focus {
+                ReplayFocus::Toon => {
+                    self.replay.toon_cursor = 0;
                 }
-            }
-            crossterm::event::KeyCode::PageDown => {
-                if self.view == View::Debug {
-                    self.debug_scroll = self.debug_scroll.saturating_add(10);
-                } else if self.view == View::Players {
-                    let max_scroll = self
-                        .players_filtered
-                        .len()
-                        .saturating_sub(1)
-                        .min(u16::MAX as usize) as u16;
-                    self.players_scroll = self.players_scroll.saturating_add(10).min(max_scroll);
+                ReplayFocus::Alias => {
+                    self.replay.alias_cursor = 0;
                 }
-            }
-            crossterm::event::KeyCode::Home => {
-                if self.view == View::Debug {
-                    self.debug_scroll = 0;
-                } else if self.view == View::Players {
-                    self.players_scroll = 0;
+                ReplayFocus::Matchup => {
+                    self.replay.matchup_cursor = 0;
                 }
-            }
-            crossterm::event::KeyCode::End => {
-                if self.view == View::Debug {
-                    self.debug_scroll = u16::MAX;
-                } else if self.view == View::Players {
-                    let max_scroll = self
-                        .players_filtered
-                        .len()
-                        .saturating_sub(1)
-                        .min(u16::MAX as usize) as u16;
-                    self.players_scroll = max_scroll;
+                ReplayFocus::Gateway | ReplayFocus::Count => {}
+            },
+            KeyCode::End => match self.replay.focus {
+                ReplayFocus::Toon => {
+                    self.replay.toon_cursor = self.replay.toon_input.chars().count();
                 }
-            }
-            crossterm::event::KeyCode::Char('k') => {
-                if self.view == View::Debug {
-                    self.debug_scroll = self.debug_scroll.saturating_sub(1);
-                } else if self.view == View::Players {
-                    self.players_scroll = self.players_scroll.saturating_sub(1);
+                ReplayFocus::Alias => {
+                    self.replay.alias_cursor = self.replay.alias_input.chars().count();
                 }
-            }
-            crossterm::event::KeyCode::Char('j') => {
-                if self.view == View::Debug {
-                    self.debug_scroll = self.debug_scroll.saturating_add(1);
-                } else if self.view == View::Players {
-                    let max_scroll = self
-                        .players_filtered
-                        .len()
-                        .saturating_sub(1)
-                        .min(u16::MAX as usize) as u16;
-                    self.players_scroll = self.players_scroll.saturating_add(1).min(max_scroll);
+                ReplayFocus::Matchup => {
+                    self.replay.matchup_cursor = self.replay.matchup_input.chars().count();
                 }
+                ReplayFocus::Gateway | ReplayFocus::Count => {}
+            },
+            KeyCode::Backspace => match self.replay.focus {
+                ReplayFocus::Toon => {
+                    if self.replay.toon_cursor > 0 {
+                        let before: String = self
+                            .replay
+                            .toon_input
+                            .chars()
+                            .take(self.replay.toon_cursor - 1)
+                            .collect();
+                        let after: String = self
+                            .replay
+                            .toon_input
+                            .chars()
+                            .skip(self.replay.toon_cursor)
+                            .collect();
+                        self.replay.toon_input = before + &after;
+                        self.replay.toon_cursor -= 1;
+                    }
+                }
+                ReplayFocus::Alias => {
+                    if self.replay.alias_cursor > 0 {
+                        let before: String = self
+                            .replay
+                            .alias_input
+                            .chars()
+                            .take(self.replay.alias_cursor - 1)
+                            .collect();
+                        let after: String = self
+                            .replay
+                            .alias_input
+                            .chars()
+                            .skip(self.replay.alias_cursor)
+                            .collect();
+                        self.replay.alias_input = before + &after;
+                        self.replay.alias_cursor -= 1;
+                    }
+                }
+                ReplayFocus::Matchup => {
+                    if self.replay.matchup_cursor > 0 {
+                        let before: String = self
+                            .replay
+                            .matchup_input
+                            .chars()
+                            .take(self.replay.matchup_cursor - 1)
+                            .collect();
+                        let after: String = self
+                            .replay
+                            .matchup_input
+                            .chars()
+                            .skip(self.replay.matchup_cursor)
+                            .collect();
+                        self.replay.matchup_input = before + &after;
+                        self.replay.matchup_cursor -= 1;
+                    }
+                }
+                ReplayFocus::Gateway | ReplayFocus::Count => {}
+            },
+            KeyCode::Delete => match self.replay.focus {
+                ReplayFocus::Toon => {
+                    let len = self.replay.toon_input.chars().count();
+                    if self.replay.toon_cursor < len {
+                        let before: String = self
+                            .replay
+                            .toon_input
+                            .chars()
+                            .take(self.replay.toon_cursor)
+                            .collect();
+                        let after: String = self
+                            .replay
+                            .toon_input
+                            .chars()
+                            .skip(self.replay.toon_cursor + 1)
+                            .collect();
+                        self.replay.toon_input = before + &after;
+                    }
+                }
+                ReplayFocus::Alias => {
+                    let len = self.replay.alias_input.chars().count();
+                    if self.replay.alias_cursor < len {
+                        let before: String = self
+                            .replay
+                            .alias_input
+                            .chars()
+                            .take(self.replay.alias_cursor)
+                            .collect();
+                        let after: String = self
+                            .replay
+                            .alias_input
+                            .chars()
+                            .skip(self.replay.alias_cursor + 1)
+                            .collect();
+                        self.replay.alias_input = before + &after;
+                    }
+                }
+                ReplayFocus::Matchup => {
+                    let len = self.replay.matchup_input.chars().count();
+                    if self.replay.matchup_cursor < len {
+                        let before: String = self
+                            .replay
+                            .matchup_input
+                            .chars()
+                            .take(self.replay.matchup_cursor)
+                            .collect();
+                        let after: String = self
+                            .replay
+                            .matchup_input
+                            .chars()
+                            .skip(self.replay.matchup_cursor + 1)
+                            .collect();
+                        self.replay.matchup_input = before + &after;
+                    }
+                }
+                ReplayFocus::Gateway | ReplayFocus::Count => {}
+            },
+            KeyCode::Char(c) => match self.replay.focus {
+                ReplayFocus::Toon => {
+                    let len = self.replay.toon_input.chars().count();
+                    if self.replay.toon_cursor >= len {
+                        self.replay.toon_input.push(c);
+                    } else {
+                        let before: String = self
+                            .replay
+                            .toon_input
+                            .chars()
+                            .take(self.replay.toon_cursor)
+                            .collect();
+                        let after: String = self
+                            .replay
+                            .toon_input
+                            .chars()
+                            .skip(self.replay.toon_cursor)
+                            .collect();
+                        self.replay.toon_input = before + &c.to_string() + &after;
+                    }
+                    self.replay.toon_cursor += 1;
+                }
+                ReplayFocus::Alias => {
+                    let len = self.replay.alias_input.chars().count();
+                    if self.replay.alias_cursor >= len {
+                        self.replay.alias_input.push(c);
+                    } else {
+                        let before: String = self
+                            .replay
+                            .alias_input
+                            .chars()
+                            .take(self.replay.alias_cursor)
+                            .collect();
+                        let after: String = self
+                            .replay
+                            .alias_input
+                            .chars()
+                            .skip(self.replay.alias_cursor)
+                            .collect();
+                        self.replay.alias_input = before + &c.to_string() + &after;
+                    }
+                    self.replay.alias_cursor += 1;
+                }
+                ReplayFocus::Matchup => {
+                    let len = self.replay.matchup_input.chars().count();
+                    if self.replay.matchup_cursor >= len {
+                        self.replay.matchup_input.push(c);
+                    } else {
+                        let before: String = self
+                            .replay
+                            .matchup_input
+                            .chars()
+                            .take(self.replay.matchup_cursor)
+                            .collect();
+                        let after: String = self
+                            .replay
+                            .matchup_input
+                            .chars()
+                            .skip(self.replay.matchup_cursor)
+                            .collect();
+                        self.replay.matchup_input = before + &c.to_string() + &after;
+                    }
+                    self.replay.matchup_cursor += 1;
+                }
+                ReplayFocus::Count => {
+                    if c.is_ascii_digit() {
+                        let digit = c.to_digit(10).unwrap_or(0) as u16;
+                        self.replay.input_count = digit.max(1);
+                    }
+                }
+                ReplayFocus::Gateway => {}
+            },
+            KeyCode::Enter => {
+                self.replay.should_start = true;
             }
             _ => {}
         }
+    }
 
-        if self.view == View::Players {
-            self.clamp_players_scroll();
+    fn handle_search_key(&mut self, code: KeyCode) {
+        match code {
+            KeyCode::Tab => {
+                self.search.focus_gateway = !self.search.focus_gateway;
+            }
+            KeyCode::Left => {
+                if self.search.focus_gateway {
+                    self.gateway_prev();
+                } else if self.search.cursor > 0 {
+                    self.search.cursor -= 1;
+                }
+            }
+            KeyCode::Right => {
+                if self.search.focus_gateway {
+                    self.gateway_next();
+                } else {
+                    let len = self.search.name.chars().count();
+                    if self.search.cursor < len {
+                        self.search.cursor += 1;
+                    }
+                }
+            }
+            KeyCode::Backspace => {
+                if !self.search.focus_gateway && self.search.cursor > 0 {
+                    let before: String = self
+                        .search
+                        .name
+                        .chars()
+                        .take(self.search.cursor - 1)
+                        .collect();
+                    let after: String = self.search.name.chars().skip(self.search.cursor).collect();
+                    self.search.name = before + &after;
+                    self.search.cursor -= 1;
+                    self.clamp_search_cursor();
+                }
+            }
+            KeyCode::Delete => {
+                if !self.search.focus_gateway {
+                    let len = self.search.name.chars().count();
+                    if self.search.cursor < len {
+                        let before: String =
+                            self.search.name.chars().take(self.search.cursor).collect();
+                        let after: String = self
+                            .search
+                            .name
+                            .chars()
+                            .skip(self.search.cursor + 1)
+                            .collect();
+                        self.search.name = before + &after;
+                    }
+                }
+            }
+            KeyCode::Enter => {
+                self.search.in_progress = true;
+                self.search.error = None;
+                self.search.matches_scroll = 0;
+            }
+            KeyCode::Home => {
+                if !self.search.focus_gateway {
+                    self.search.cursor = 0;
+                }
+            }
+            KeyCode::End => {
+                if !self.search.focus_gateway {
+                    self.search.cursor = self.search.name.chars().count();
+                }
+            }
+            KeyCode::Char(c) => {
+                if !self.search.focus_gateway {
+                    let len = self.search.name.chars().count();
+                    if self.search.cursor >= len {
+                        self.search.name.push(c);
+                    } else {
+                        let before: String =
+                            self.search.name.chars().take(self.search.cursor).collect();
+                        let after: String =
+                            self.search.name.chars().skip(self.search.cursor).collect();
+                        self.search.name = before + &c.to_string() + &after;
+                    }
+                    self.search.cursor += 1;
+                }
+            }
+            KeyCode::Up => {
+                self.search.matches_scroll = self.search.matches_scroll.saturating_sub(1);
+            }
+            KeyCode::Down => {
+                self.search.matches_scroll = self.search.matches_scroll.saturating_add(1);
+            }
+            KeyCode::PageUp => {
+                self.search.matches_scroll = self.search.matches_scroll.saturating_sub(10);
+            }
+            KeyCode::PageDown => {
+                self.search.matches_scroll = self.search.matches_scroll.saturating_add(10);
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_players_key(&mut self, code: KeyCode) -> bool {
+        match code {
+            KeyCode::Left => {
+                if self.players.search_cursor > 0 {
+                    self.players.search_cursor -= 1;
+                }
+                true
+            }
+            KeyCode::Right => {
+                let len = self.players.search_query.chars().count();
+                if self.players.search_cursor < len {
+                    self.players.search_cursor += 1;
+                }
+                true
+            }
+            KeyCode::Home => {
+                self.players.search_cursor = 0;
+                true
+            }
+            KeyCode::End => {
+                self.players.search_cursor = self.players.search_query.chars().count();
+                true
+            }
+            KeyCode::Backspace => {
+                if self.players.search_cursor > 0 {
+                    let mut chars: Vec<char> = self.players.search_query.chars().collect();
+                    let idx = self.players.search_cursor - 1;
+                    if idx < chars.len() {
+                        chars.remove(idx);
+                        self.players.search_query = chars.into_iter().collect();
+                        self.players.search_cursor -= 1;
+                        self.update_player_filter();
+                    }
+                }
+                true
+            }
+            KeyCode::Delete => {
+                let mut chars: Vec<char> = self.players.search_query.chars().collect();
+                if self.players.search_cursor < chars.len() {
+                    chars.remove(self.players.search_cursor);
+                    self.players.search_query = chars.into_iter().collect();
+                    self.update_player_filter();
+                }
+                true
+            }
+            KeyCode::Char(c) => {
+                let mut chars: Vec<char> = self.players.search_query.chars().collect();
+                let idx = self.players.search_cursor.min(chars.len());
+                chars.insert(idx, c);
+                self.players.search_query = chars.into_iter().collect();
+                self.players.search_cursor += 1;
+                self.update_player_filter();
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn handle_global_navigation_key(&mut self, code: KeyCode) {
+        match code {
+            // Note: Global view hotkeys are handled in main (Ctrl+D/S/M)
+            KeyCode::Up => {
+                if matches!(self.view, View::Debug) {
+                    self.debug_scroll = self.debug_scroll.saturating_sub(1);
+                } else if matches!(self.view, View::Players) {
+                    self.players.scroll = self.players.scroll.saturating_sub(1);
+                }
+            }
+            KeyCode::Down => {
+                if matches!(self.view, View::Debug) {
+                    self.debug_scroll = self.debug_scroll.saturating_add(1);
+                } else if matches!(self.view, View::Players) {
+                    let max_scroll = self
+                        .players
+                        .filtered
+                        .len()
+                        .saturating_sub(1)
+                        .min(u16::MAX as usize) as u16;
+                    self.players.scroll = self.players.scroll.saturating_add(1).min(max_scroll);
+                }
+            }
+            KeyCode::PageUp => {
+                if matches!(self.view, View::Debug) {
+                    self.debug_scroll = self.debug_scroll.saturating_sub(10);
+                } else if matches!(self.view, View::Players) {
+                    self.players.scroll = self.players.scroll.saturating_sub(10);
+                }
+            }
+            KeyCode::PageDown => {
+                if matches!(self.view, View::Debug) {
+                    self.debug_scroll = self.debug_scroll.saturating_add(10);
+                } else if matches!(self.view, View::Players) {
+                    let max_scroll = self
+                        .players
+                        .filtered
+                        .len()
+                        .saturating_sub(1)
+                        .min(u16::MAX as usize) as u16;
+                    self.players.scroll = self.players.scroll.saturating_add(10).min(max_scroll);
+                }
+            }
+            KeyCode::Home => {
+                if matches!(self.view, View::Debug) {
+                    self.debug_scroll = 0;
+                } else if matches!(self.view, View::Players) {
+                    self.players.scroll = 0;
+                }
+            }
+            KeyCode::End => {
+                if matches!(self.view, View::Debug) {
+                    self.debug_scroll = u16::MAX;
+                } else if matches!(self.view, View::Players) {
+                    let max_scroll = self
+                        .players
+                        .filtered
+                        .len()
+                        .saturating_sub(1)
+                        .min(u16::MAX as usize) as u16;
+                    self.players.scroll = max_scroll;
+                }
+            }
+            KeyCode::Char('k') => {
+                if matches!(self.view, View::Debug) {
+                    self.debug_scroll = self.debug_scroll.saturating_sub(1);
+                } else if matches!(self.view, View::Players) {
+                    self.players.scroll = self.players.scroll.saturating_sub(1);
+                }
+            }
+            KeyCode::Char('j') => {
+                if matches!(self.view, View::Debug) {
+                    self.debug_scroll = self.debug_scroll.saturating_add(1);
+                } else if matches!(self.view, View::Players) {
+                    let max_scroll = self
+                        .players
+                        .filtered
+                        .len()
+                        .saturating_sub(1)
+                        .min(u16::MAX as usize) as u16;
+                    self.players.scroll = self.players.scroll.saturating_add(1).min(max_scroll);
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -695,45 +790,13 @@ impl Default for App {
             rating_retry_next_at: None,
             rating_retry_baseline: None,
             replay_storage: None,
-            replay_focus: ReplayFocus::Toon,
-            replay_toon_input: String::new(),
-            replay_toon_cursor: 0,
-            replay_matchup_input: String::new(),
-            replay_matchup_cursor: 0,
-            replay_alias_input: String::new(),
-            replay_alias_cursor: 0,
-            replay_input_gateway: 10,
-            replay_input_count: 5,
-            replay_in_progress: false,
-            replay_should_start: false,
-            replay_last_summary: None,
-            replay_last_request: None,
-            replay_last_error: None,
-            replay_job_rx: None,
-            replay_job_handle: None,
-            search_name: String::new(),
-            search_gateway: 10,
-            search_focus_gateway: false,
-            search_in_progress: false,
-            search_rating: None,
-            search_other_toons: Vec::new(),
-            search_other_toons_data: Vec::new(),
-            search_matches: Vec::new(),
-            search_error: None,
-            search_matches_scroll: 0,
-            search_cursor: 0,
-            search_main_race: None,
-            search_matchups: Vec::new(),
+            replay: ReplayState::default(),
+            search: SearchState::default(),
             status_opponent_rect: None,
             main_opponent_toons_rect: None,
-            search_other_toons_rect: None,
             self_main_race: None,
             self_matchups: Vec::new(),
-            player_directory: None,
-            players_scroll: 0,
-            players_filtered: Vec::new(),
-            player_search_query: String::new(),
-            player_search_cursor: 0,
+            players: PlayersState::default(),
         }
     }
 }
@@ -744,7 +807,7 @@ impl App {
     }
 
     pub fn gateway_next(&mut self) {
-        self.search_gateway = match self.search_gateway {
+        self.search.gateway = match self.search.gateway {
             10 => 11,
             11 => 20,
             20 => 30,
@@ -753,7 +816,7 @@ impl App {
         };
     }
     pub fn gateway_prev(&mut self) {
-        self.search_gateway = match self.search_gateway {
+        self.search.gateway = match self.search.gateway {
             11 => 10,
             20 => 11,
             30 => 20,
@@ -762,56 +825,66 @@ impl App {
         };
     }
     pub fn clamp_search_cursor(&mut self) {
-        let len = self.search_name.chars().count();
-        if self.search_cursor > len {
-            self.search_cursor = len;
+        let len = self.search.name.chars().count();
+        if self.search.cursor > len {
+            self.search.cursor = len;
         }
     }
 
     fn clamp_player_search_cursor(&mut self) {
-        let len = self.player_search_query.chars().count();
-        if self.player_search_cursor > len {
-            self.player_search_cursor = len;
+        let len = self.players.search_query.chars().count();
+        if self.players.search_cursor > len {
+            self.players.search_cursor = len;
         }
     }
 
     fn clamp_players_scroll(&mut self) {
-        if self.players_filtered.is_empty() {
-            self.players_scroll = 0;
+        if self.players.filtered.is_empty() {
+            self.players.scroll = 0;
             return;
         }
         let max_scroll = self
-            .players_filtered
+            .players
+            .filtered
             .len()
             .saturating_sub(1)
             .min(u16::MAX as usize) as u16;
-        if self.players_scroll > max_scroll {
-            self.players_scroll = max_scroll;
+        if self.players.scroll > max_scroll {
+            self.players.scroll = max_scroll;
         }
     }
 
     pub fn update_player_filter(&mut self) {
-        let query = self.player_search_query.trim();
-        self.players_filtered = self
-            .player_directory
+        let query = self.players.search_query.trim();
+        self.players.filtered = self
+            .players
+            .directory
             .as_ref()
             .map(|dir| dir.filter(query))
             .unwrap_or_default();
-        self.players_scroll = 0;
+        self.players.scroll = 0;
         self.clamp_players_scroll();
         self.clamp_player_search_cursor();
     }
 
     pub fn set_player_directory(&mut self, directory: PlayerDirectory) {
-        self.player_directory = Some(directory);
-        self.players_scroll = 0;
-        self.player_search_query.clear();
-        self.player_search_cursor = 0;
+        self.players.directory = Some(directory);
+        self.players.missing_data = false;
+        self.players.scroll = 0;
+        self.players.search_query.clear();
+        self.players.search_cursor = 0;
+        self.update_player_filter();
+    }
+
+    pub fn mark_player_directory_missing(&mut self) {
+        self.players.directory = None;
+        self.players.missing_data = true;
+        self.players.scroll = 0;
         self.update_player_filter();
     }
 
     pub fn replay_gateway_next(&mut self) {
-        self.replay_input_gateway = match self.replay_input_gateway {
+        self.replay.input_gateway = match self.replay.input_gateway {
             10 => 11,
             11 => 20,
             20 => 30,
@@ -821,7 +894,7 @@ impl App {
     }
 
     pub fn replay_gateway_prev(&mut self) {
-        self.replay_input_gateway = match self.replay_input_gateway {
+        self.replay.input_gateway = match self.replay.input_gateway {
             11 => 10,
             20 => 11,
             30 => 20,
@@ -831,43 +904,43 @@ impl App {
     }
 
     pub fn clamp_replay_cursors(&mut self) {
-        let len = self.replay_toon_input.chars().count();
-        if self.replay_toon_cursor > len {
-            self.replay_toon_cursor = len;
+        let len = self.replay.toon_input.chars().count();
+        if self.replay.toon_cursor > len {
+            self.replay.toon_cursor = len;
         }
-        let len_a = self.replay_alias_input.chars().count();
-        if self.replay_alias_cursor > len_a {
-            self.replay_alias_cursor = len_a;
+        let len_a = self.replay.alias_input.chars().count();
+        if self.replay.alias_cursor > len_a {
+            self.replay.alias_cursor = len_a;
         }
-        let len_m = self.replay_matchup_input.chars().count();
-        if self.replay_matchup_cursor > len_m {
-            self.replay_matchup_cursor = len_m;
+        let len_m = self.replay.matchup_input.chars().count();
+        if self.replay.matchup_cursor > len_m {
+            self.replay.matchup_cursor = len_m;
         }
-        if self.replay_input_count == 0 {
-            self.replay_input_count = 1;
+        if self.replay.input_count == 0 {
+            self.replay.input_count = 1;
         }
     }
 
     pub fn poll_replay_job(&mut self) {
         let mut clear = false;
-        if let Some(rx) = self.replay_job_rx.as_ref() {
+        if let Some(rx) = self.replay.job_rx.as_ref() {
             match rx.try_recv() {
                 Ok(summary) => {
-                    self.replay_in_progress = false;
-                    self.replay_last_summary = Some(summary);
+                    self.replay.in_progress = false;
+                    self.replay.last_summary = Some(summary);
                     clear = true;
                 }
                 Err(TryRecvError::Empty) => {}
                 Err(TryRecvError::Disconnected) => {
-                    self.replay_in_progress = false;
-                    self.replay_last_error = Some("Replay job channel disconnected".to_string());
+                    self.replay.in_progress = false;
+                    self.replay.last_error = Some("Replay job channel disconnected".to_string());
                     clear = true;
                 }
             }
         }
         if clear {
-            self.replay_job_rx = None;
-            if let Some(handle) = self.replay_job_handle.take() {
+            self.replay.job_rx = None;
+            if let Some(handle) = self.replay.job_handle.take() {
                 let _ = handle.join();
             }
         }

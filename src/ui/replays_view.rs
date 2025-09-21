@@ -15,18 +15,18 @@ pub fn render_replays(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
         if focus == target { "→ " } else { "  " }
     };
 
-    let gw_label = crate::api::gateway_label(app.replay_input_gateway);
+    let gw_label = crate::api::gateway_label(app.replay.input_gateway);
     let mut info_lines = vec![Line::from(Span::raw(
         "Ctrl+M Main  •  Ctrl+S Search  •  Enter Start Download",
     ))];
     info_lines.push(Line::from(Span::raw("")));
 
     info_lines.push(Line::from(vec![
-        Span::raw(focus_indicator(app.replay_focus, ReplayFocus::Toon)),
+        Span::raw(focus_indicator(app.replay.focus, ReplayFocus::Toon)),
         Span::styled("Profile: ", Style::default()),
         Span::styled(
-            app.replay_toon_input.clone(),
-            if matches!(app.replay_focus, ReplayFocus::Toon) {
+            app.replay.toon_input.clone(),
+            if matches!(app.replay.focus, ReplayFocus::Toon) {
                 Style::default().add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
@@ -34,12 +34,12 @@ pub fn render_replays(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
         ),
     ]));
 
-    let alias_focused = matches!(app.replay_focus, ReplayFocus::Alias);
-    let alias_display = if app.replay_alias_input.is_empty() && !alias_focused {
+    let alias_focused = matches!(app.replay.focus, ReplayFocus::Alias);
+    let alias_display = if app.replay.alias_input.is_empty() && !alias_focused {
         Span::styled("(optional)", Style::default().fg(Color::DarkGray))
     } else {
         Span::styled(
-            app.replay_alias_input.clone(),
+            app.replay.alias_input.clone(),
             if alias_focused {
                 Style::default().add_modifier(Modifier::BOLD)
             } else {
@@ -48,17 +48,17 @@ pub fn render_replays(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
         )
     };
     info_lines.push(Line::from(vec![
-        Span::raw(focus_indicator(app.replay_focus, ReplayFocus::Alias)),
+        Span::raw(focus_indicator(app.replay.focus, ReplayFocus::Alias)),
         Span::styled("Alias: ", Style::default()),
         alias_display,
     ]));
 
     info_lines.push(Line::from(vec![
-        Span::raw(focus_indicator(app.replay_focus, ReplayFocus::Gateway)),
+        Span::raw(focus_indicator(app.replay.focus, ReplayFocus::Gateway)),
         Span::styled("Gateway: ", Style::default()),
         Span::styled(
-            format!("{} ({})", gw_label, app.replay_input_gateway),
-            if matches!(app.replay_focus, ReplayFocus::Gateway) {
+            format!("{} ({})", gw_label, app.replay.input_gateway),
+            if matches!(app.replay.focus, ReplayFocus::Gateway) {
                 Style::default().add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
@@ -67,11 +67,11 @@ pub fn render_replays(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
     ]));
 
     info_lines.push(Line::from(vec![
-        Span::raw(focus_indicator(app.replay_focus, ReplayFocus::Matchup)),
+        Span::raw(focus_indicator(app.replay.focus, ReplayFocus::Matchup)),
         Span::styled("Matchup: ", Style::default()),
         Span::styled(
-            app.replay_matchup_input.clone(),
-            if matches!(app.replay_focus, ReplayFocus::Matchup) {
+            app.replay.matchup_input.clone(),
+            if matches!(app.replay.focus, ReplayFocus::Matchup) {
                 Style::default().add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
@@ -80,11 +80,11 @@ pub fn render_replays(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
     ]));
 
     info_lines.push(Line::from(vec![
-        Span::raw(focus_indicator(app.replay_focus, ReplayFocus::Count)),
+        Span::raw(focus_indicator(app.replay.focus, ReplayFocus::Count)),
         Span::styled("Count: ", Style::default()),
         Span::styled(
-            app.replay_input_count.to_string(),
-            if matches!(app.replay_focus, ReplayFocus::Count) {
+            app.replay.input_count.to_string(),
+            if matches!(app.replay.focus, ReplayFocus::Count) {
                 Style::default().add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
@@ -92,12 +92,12 @@ pub fn render_replays(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
         ),
     ]));
 
-    if let Some(err) = &app.replay_last_error {
+    if let Some(err) = &app.replay.last_error {
         info_lines.push(Line::from(Span::styled(
             format!("Error: {}", err),
             Style::default().fg(Color::Red),
         )));
-    } else if app.replay_in_progress {
+    } else if app.replay.in_progress {
         info_lines.push(Line::from(Span::styled(
             "Downloading replays...",
             Style::default().fg(Color::Yellow),
@@ -120,7 +120,7 @@ pub fn render_replays(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
     frame.render_widget(input_block, rows[0]);
 
     let mut summary_lines: Vec<Line> = Vec::new();
-    if let Some(summary) = &app.replay_last_summary {
+    if let Some(summary) = &app.replay.last_summary {
         summary_lines.push(Line::from(Span::styled(
             "Last download",
             Style::default()
@@ -160,7 +160,7 @@ pub fn render_replays(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
                 )));
             }
         }
-    } else if app.replay_in_progress {
+    } else if app.replay.in_progress {
         summary_lines.push(Line::from(Span::styled(
             "Download in progress…",
             Style::default().fg(Color::Yellow),
@@ -172,7 +172,7 @@ pub fn render_replays(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
         )));
     }
 
-    if let Some(req) = &app.replay_last_request {
+    if let Some(req) = &app.replay.last_request {
         summary_lines.push(Line::from(Span::raw("")));
         summary_lines.push(Line::from(Span::styled(
             format!(
@@ -203,17 +203,17 @@ pub fn render_replays(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
 
     frame.render_widget(summary_block, rows[1]);
 
-    if matches!(app.replay_focus, ReplayFocus::Toon) {
-        let cursor_x = input_inner.x + 2 + "Profile: ".len() as u16 + app.replay_toon_cursor as u16;
+    if matches!(app.replay.focus, ReplayFocus::Toon) {
+        let cursor_x = input_inner.x + 2 + "Profile: ".len() as u16 + app.replay.toon_cursor as u16;
         let cursor_y = input_inner.y + 2;
         frame.set_cursor_position((cursor_x, cursor_y));
-    } else if matches!(app.replay_focus, ReplayFocus::Alias) {
-        let cursor_x = input_inner.x + 2 + "Alias: ".len() as u16 + app.replay_alias_cursor as u16;
+    } else if matches!(app.replay.focus, ReplayFocus::Alias) {
+        let cursor_x = input_inner.x + 2 + "Alias: ".len() as u16 + app.replay.alias_cursor as u16;
         let cursor_y = input_inner.y + 3;
         frame.set_cursor_position((cursor_x, cursor_y));
-    } else if matches!(app.replay_focus, ReplayFocus::Matchup) {
+    } else if matches!(app.replay.focus, ReplayFocus::Matchup) {
         let cursor_x =
-            input_inner.x + 2 + "Matchup: ".len() as u16 + app.replay_matchup_cursor as u16;
+            input_inner.x + 2 + "Matchup: ".len() as u16 + app.replay.matchup_cursor as u16;
         let cursor_y = input_inner.y + 5;
         frame.set_cursor_position((cursor_x, cursor_y));
     }

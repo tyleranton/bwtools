@@ -10,8 +10,8 @@ pub fn render_players(frame: &mut Frame, area: Rect, app: &App) {
         .constraints([Constraint::Length(3), Constraint::Min(0)])
         .split(area);
 
-    let query_chars: Vec<char> = app.player_search_query.chars().collect();
-    let cursor = app.player_search_cursor.min(query_chars.len());
+    let query_chars: Vec<char> = app.players.search_query.chars().collect();
+    let cursor = app.players.search_cursor.min(query_chars.len());
     let before: String = query_chars[..cursor].iter().collect();
     let after: String = query_chars[cursor..].iter().collect();
 
@@ -31,23 +31,35 @@ pub fn render_players(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(search, chunks[0]);
 
     let total_entries = app
-        .player_directory
+        .players
+        .directory
         .as_ref()
         .map(|dir| dir.entries().len())
         .unwrap_or(0);
 
-    let lines: Vec<Line> = if total_entries == 0 {
+    let lines: Vec<Line> = if app.players.missing_data {
+        vec![Line::from(vec![Span::styled(
+            "player_list.json not bundled with this build",
+            Style::default().fg(Color::Red),
+        )])]
+    } else if app.players.directory.is_none() {
+        vec![Line::from(vec![Span::styled(
+            "Loading player list…",
+            Style::default().fg(Color::DarkGray),
+        )])]
+    } else if total_entries == 0 {
         vec![Line::from(vec![Span::styled(
             "Player list unavailable",
             Style::default().fg(Color::DarkGray),
         )])]
-    } else if app.players_filtered.is_empty() {
+    } else if app.players.filtered.is_empty() {
         vec![Line::from(vec![Span::styled(
             "No matches",
             Style::default().fg(Color::DarkGray),
         )])]
     } else {
-        app.players_filtered
+        app.players
+            .filtered
             .iter()
             .map(|entry| {
                 Line::from(vec![
@@ -66,7 +78,7 @@ pub fn render_players(frame: &mut Frame, area: Rect, app: &App) {
 
     let title = format!(
         "Player Directory ({}/{})",
-        app.players_filtered.len(),
+        app.players.filtered.len(),
         total_entries
     );
     let list = Paragraph::new(lines)
@@ -76,7 +88,7 @@ pub fn render_players(frame: &mut Frame, area: Rect, app: &App) {
                 .borders(Borders::ALL)
                 .padding(Padding::uniform(1)),
         )
-        .scroll((app.players_scroll, 0))
+        .scroll((app.players.scroll, 0))
         .wrap(Wrap { trim: false });
 
     frame.render_widget(list, chunks[1]);
