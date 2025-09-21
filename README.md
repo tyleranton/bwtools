@@ -1,6 +1,6 @@
 # bwtools
 
-A terminal UI tool for StarCraft: Remastered that detects the local web API, identifies your current profile and opponent, and surfaces useful info like ratings and opponent toons. Built with Ratatui and integrates the `bw-web-api-rs` client.
+Terminal companion for StarCraft: Remastered that tracks your games, stats, opponent profiles, and more.
 
 ## Features
 - Detects your profile and opponent when loading into a game.
