@@ -4,6 +4,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::App;
+use crate::ui::profile_stats::profile_stat_lines;
 
 pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
     let rows = Layout::default()
@@ -79,12 +80,13 @@ pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
 
     let body = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(7),
-            Constraint::Length(6),
-            Constraint::Min(0),
-        ])
+        .constraints([Constraint::Length(8), Constraint::Min(0)])
         .split(rows[1]);
+
+    let top = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(body[0]);
 
     let mut prof_lines: Vec<Line> = Vec::new();
     let is_self = app
@@ -99,41 +101,11 @@ pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
             Style::default().fg(Color::DarkGray),
         )));
     } else {
-        let rate_text = app
-            .search
-            .rating
-            .map(|r| format!("Rating: {}", r))
-            .unwrap_or_else(|| "Rating: N/A".to_string());
-        prof_lines.push(Line::from(Span::raw(rate_text)));
-        if let Some(ref r) = app.search.main_race {
-            prof_lines.push(Line::from(vec![
-                Span::styled(
-                    "Race: ",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(r.clone()),
-            ]));
-        }
-        if !app.search.matchups.is_empty() {
-            for m in app.search.matchups.iter() {
-                if let Some((label, rest)) = m.split_once(':') {
-                    prof_lines.push(Line::from(vec![
-                        Span::styled(
-                            label.trim(),
-                            Style::default()
-                                .fg(Color::Cyan)
-                                .add_modifier(Modifier::BOLD),
-                        ),
-                        Span::raw(":"),
-                        Span::raw(rest.to_string()),
-                    ]));
-                } else {
-                    prof_lines.push(Line::from(Span::raw(m.clone())));
-                }
-            }
-        }
+        prof_lines = profile_stat_lines(
+            app.search.rating,
+            app.search.main_race.as_deref(),
+            &app.search.matchups,
+        );
         if let Some(err) = &app.search.error {
             prof_lines.push(Line::from(Span::styled(
                 format!("Error: {}", err),
@@ -149,7 +121,7 @@ pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
                 .add_modifier(Modifier::BOLD),
         )),
     );
-    frame.render_widget(profile_panel, body[0]);
+    frame.render_widget(profile_panel, top[0]);
 
     let mut others: Vec<Line> = Vec::new();
     if app.search.other_toons.is_empty() {
@@ -168,13 +140,13 @@ pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
             .fg(Color::Magenta)
             .add_modifier(Modifier::BOLD),
     ));
-    let others_inner = others_block.inner(body[1]);
+    let others_inner = others_block.inner(top[1]);
     let others_panel = Paragraph::new(others)
         .wrap(Wrap { trim: true })
         .alignment(Alignment::Left)
         .block(others_block);
     app.search.other_toons_rect = Some(others_inner);
-    frame.render_widget(others_panel, body[1]);
+    frame.render_widget(others_panel, top[1]);
 
     let mut matches: Vec<Line> = Vec::new();
     if app.search.matches.is_empty() {
@@ -199,5 +171,5 @@ pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
                     .add_modifier(Modifier::BOLD),
             )),
         );
-    frame.render_widget(matches_panel, body[2]);
+    frame.render_widget(matches_panel, body[1]);
 }

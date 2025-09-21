@@ -140,6 +140,7 @@ pub struct App {
     pub opponent_toons_data: Vec<(String, u16, u32)>,
     pub last_opponent_identity: Option<(String, u16)>,
     pub opponent_race: Option<String>,
+    pub opponent_matchups: Vec<String>,
     pub own_profiles: HashSet<String>,
     pub last_rating_poll: Option<Instant>,
     pub rating_output_last_text: Option<String>,
@@ -171,6 +172,7 @@ impl App {
         self.last_opponent_identity = None;
         self.opponent_race = None;
         self.opponent_output_last_text = None;
+        self.opponent_matchups.clear();
     }
 
     pub fn begin_search(&mut self, name: String, gateway: u16) {
@@ -210,6 +212,7 @@ impl Default for App {
             opponent_toons_data: Vec::new(),
             last_opponent_identity: None,
             opponent_race: None,
+            opponent_matchups: Vec::new(),
             own_profiles: HashSet::new(),
             last_rating_poll: None,
             rating_output_last_text: None,

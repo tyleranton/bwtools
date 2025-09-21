@@ -21,21 +21,10 @@ pub fn render_status(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, ap
         ),
     };
     let self_line_opt = match (&app.self_profile_name, app.self_gateway) {
-        (Some(name), Some(gw)) => {
-            let rating = app
-                .self_profile_rating
-                .map(|r| format!(" • Rating {}", r))
-                .unwrap_or_default();
-            Some(Line::from(Span::styled(
-                format!(
-                    "Self: {} • {}{}",
-                    name,
-                    crate::api::gateway_label(gw),
-                    rating
-                ),
-                Style::default().fg(Color::Yellow),
-            )))
-        }
+        (Some(name), Some(gw)) => Some(Line::from(Span::styled(
+            format!("Self: {} • {}", name, crate::api::gateway_label(gw)),
+            Style::default().fg(Color::Yellow),
+        ))),
         (Some(name), None) => Some(Line::from(Span::styled(
             format!("Self: {}", name),
             Style::default().fg(Color::Yellow),

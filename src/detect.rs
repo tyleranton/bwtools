@@ -164,6 +164,7 @@ fn detect_opponent(
                 }
 
                 app.opponent_race = None;
+                app.opponent_matchups.clear();
 
                 match api.opponent_toons_summary(opp_name, opp_gw) {
                     Ok(list) => {
@@ -192,7 +193,7 @@ fn detect_opponent(
 
                 match api.get_scr_profile(opp_name, opp_gw) {
                     Ok(profile) => {
-                        let (mr, _lines, _results) = api.profile_stats_last100(&profile, opp_name);
+                        let (mr, lines, _results) = api.profile_stats_last100(&profile, opp_name);
                         tracing::debug!(
                             opponent = %opp_name,
                             gateway = opp_gw,
@@ -200,6 +201,7 @@ fn detect_opponent(
                             "opponent profile fetched"
                         );
                         app.opponent_race = mr;
+                        app.opponent_matchups = lines;
                     }
                     Err(err) => tracing::error!(error = %err, "opponent profile fetch failed"),
                 }

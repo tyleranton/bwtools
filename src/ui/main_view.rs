@@ -4,30 +4,17 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::App;
+use crate::ui::profile_stats::profile_stat_lines;
 
 pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app: &mut App) {
-    let sub = Layout::default()
+    let segments = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
             Constraint::Length(7),
             Constraint::Min(0),
+            Constraint::Length(1),
         ])
         .split(area);
-
-    let header = Paragraph::new(vec![Line::from(Span::raw(
-        "Ctrl+S Search  •  Ctrl+D Debug  •  Ctrl+R Replays  •  Ctrl+Q/Esc Quit",
-    ))])
-    .alignment(Alignment::Left)
-    .block(
-        Block::default().borders(Borders::ALL).title(Span::styled(
-            "Main",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        )),
-    );
-    frame.render_widget(header, sub[0]);
 
     let stats_block = Block::default().borders(Borders::ALL).title(Span::styled(
         "Profile Stats",
@@ -35,58 +22,18 @@ pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app:
             .fg(Color::Green)
             .add_modifier(Modifier::BOLD),
     ));
-    let stats_area = sub[1];
+    let stats_area = segments[0];
     let stats_inner = stats_block.inner(stats_area);
     let cols = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(65), Constraint::Min(10)])
         .split(stats_inner);
 
-    let mut stats_lines: Vec<Line> = Vec::new();
-    if let Some(ref r) = app.self_main_race {
-        stats_lines.push(Line::from(vec![
-            Span::styled(
-                "Race: ",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(r.clone()),
-        ]));
-    } else {
-        stats_lines.push(Line::from(vec![
-            Span::styled(
-                "Race: ",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw("N/A"),
-        ]));
-    }
-    if app.self_matchups.is_empty() {
-        stats_lines.push(Line::from(Span::styled(
-            "No matchup stats.",
-            Style::default().fg(Color::DarkGray),
-        )));
-    } else {
-        for m in app.self_matchups.iter() {
-            if let Some((label, rest)) = m.split_once(':') {
-                stats_lines.push(Line::from(vec![
-                    Span::styled(
-                        label.trim(),
-                        Style::default()
-                            .fg(Color::Cyan)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                    Span::raw(":"),
-                    Span::raw(rest.to_string()),
-                ]));
-            } else {
-                stats_lines.push(Line::from(Span::raw(m.clone())));
-            }
-        }
-    }
+    let stats_lines = profile_stat_lines(
+        app.self_profile_rating,
+        app.self_main_race.as_deref(),
+        &app.self_matchups,
+    );
     frame.render_widget(stats_block, stats_area);
     frame.render_widget(
         Paragraph::new(stats_lines).alignment(Alignment::Left),
@@ -97,14 +44,24 @@ pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app:
         cols[1],
     );
 
-    let list_block = Block::default().borders(Borders::ALL).title(Span::styled(
+    let opponent_block = Block::default().borders(Borders::ALL).title(Span::styled(
         "Opponent Info",
         Style::default()
             .fg(Color::Magenta)
             .add_modifier(Modifier::BOLD),
     ));
-    let list_inner = list_block.inner(sub[2]);
-    let mut list_lines: Vec<Line> = Vec::new();
+    let opponent_area = segments[1];
+    let inner = opponent_block.inner(opponent_area);
+    frame.render_widget(opponent_block, opponent_area);
+
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(inner);
+
+    let mut opponent_profile_lines: Vec<Line> = Vec::new();
+    let mut other_toons_lines: Vec<Line> = Vec::new();
+
     if let (Some(name), Some(gw)) = (&app.profile_name, app.gateway) {
         let rating = app
             .opponent_toons_data
@@ -112,53 +69,111 @@ pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app:
             .find(|(t, _, _)| t.eq_ignore_ascii_case(name))
             .map(|(_, _, r)| *r);
         let race_opt = app.opponent_race.as_deref();
-        let mut head = crate::ui::display::opponent_header(
+        let header = crate::ui::display::opponent_header(
             name,
             crate::api::gateway_label(gw),
             race_opt,
             rating,
         );
-        if let Some(rec) = app.opponent_history.get(&name.to_ascii_lowercase())
-            && rec.wins + rec.losses > 0
-        {
-            head.push_str(&format!(" • W-L {}-{}", rec.wins, rec.losses));
-        }
-        list_lines.push(Line::from(Span::styled(
-            head,
+        opponent_profile_lines.push(Line::from(Span::styled(
+            header,
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
         )));
-        for (toon, gw2, r) in app
+
+        if let Some(rec) = app.opponent_history.get(&name.to_ascii_lowercase())
+            && rec.wins + rec.losses > 0
+        {
+            opponent_profile_lines.push(Line::from(vec![
+                Span::styled(
+                    "Record vs you: ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(format!("{}-{}", rec.wins, rec.losses)),
+            ]));
+        }
+
+        let mut matchup_lines =
+            profile_stat_lines(rating, app.opponent_race.as_deref(), &app.opponent_matchups);
+        if !matchup_lines.is_empty() {
+            matchup_lines.remove(0); // drop rating/race line (already in header)
+        }
+        if !matchup_lines.is_empty() {
+            opponent_profile_lines.push(Line::raw(String::new()));
+            opponent_profile_lines.push(Line::from(Span::styled(
+                "Season winrates",
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::BOLD),
+            )));
+            opponent_profile_lines.extend(matchup_lines);
+        }
+
+        other_toons_lines.push(Line::from(Span::styled(
+            "Other toons",
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        )));
+        if app
             .opponent_toons_data
             .iter()
-            .filter(|(t, _, _)| !t.eq_ignore_ascii_case(name))
+            .any(|(t, _, _)| !t.eq_ignore_ascii_case(name))
         {
-            list_lines.push(Line::from(Span::raw(crate::ui::display::toon_line(
-                toon,
-                crate::api::gateway_label(*gw2),
-                *r,
-            ))));
+            for (toon, gw2, r) in app
+                .opponent_toons_data
+                .iter()
+                .filter(|(t, _, _)| !t.eq_ignore_ascii_case(name))
+            {
+                other_toons_lines.push(Line::from(Span::styled(
+                    crate::ui::display::toon_line(toon, crate::api::gateway_label(*gw2), *r),
+                    Style::default().fg(Color::Gray),
+                )));
+            }
+        } else {
+            other_toons_lines.push(Line::from(Span::styled(
+                "No other toons.",
+                Style::default().fg(Color::DarkGray),
+            )));
         }
     } else if app.opponent_toons_data.is_empty() {
-        list_lines.push(Line::from(Span::styled(
+        opponent_profile_lines.push(Line::from(Span::styled(
             "No opponent info yet.",
             Style::default().fg(Color::DarkGray),
         )));
     } else {
+        other_toons_lines.push(Line::from(Span::styled(
+            "Possible toons",
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        )));
         for (toon, gw2, r) in app.opponent_toons_data.iter() {
-            list_lines.push(Line::from(Span::raw(crate::ui::display::toon_line(
-                toon,
-                crate::api::gateway_label(*gw2),
-                *r,
-            ))));
+            other_toons_lines.push(Line::from(Span::styled(
+                crate::ui::display::toon_line(toon, crate::api::gateway_label(*gw2), *r),
+                Style::default().fg(Color::Gray),
+            )));
         }
     }
 
-    let list_panel = Paragraph::new(list_lines)
-        .wrap(Wrap { trim: true })
-        .alignment(Alignment::Left)
-        .block(list_block);
-    app.main_opponent_toons_rect = Some(list_inner);
-    frame.render_widget(list_panel, sub[2]);
+    let opponent_profile = Paragraph::new(opponent_profile_lines).wrap(Wrap { trim: true });
+    frame.render_widget(opponent_profile, columns[0]);
+
+    let other_toons = Paragraph::new(other_toons_lines).wrap(Wrap { trim: true });
+    app.main_opponent_toons_rect = Some(columns[1]);
+    frame.render_widget(other_toons, columns[1]);
+
+    let hotkey_line = Line::from(Span::styled(
+        "Ctrl+S Search  •  Ctrl+D Debug  •  Ctrl+R Replays  •  Ctrl+Q/Esc Quit",
+        Style::default()
+            .fg(Color::DarkGray)
+            .add_modifier(Modifier::DIM),
+    ));
+    let hotkeys = Paragraph::new(hotkey_line)
+        .alignment(Alignment::Center)
+        .wrap(Wrap { trim: true });
+    frame.render_widget(hotkeys, segments[2]);
 }

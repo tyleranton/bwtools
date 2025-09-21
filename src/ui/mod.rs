@@ -5,6 +5,7 @@ mod display;
 mod footer;
 mod main_view;
 mod players_view;
+mod profile_stats;
 mod replays_view;
 mod search_view;
 mod status;

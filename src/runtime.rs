@@ -136,7 +136,7 @@ impl AppRuntime {
         let storage = ReplayStorage::new(self.cfg.replay_library_root.clone());
         if let Err(err) = storage.ensure_base_dirs() {
             tracing::error!(error = %err, "failed to ensure replay directories");
-            self.app.last_profile_text = Some(format!("Replay dir error: {err}"));
+            self.app.last_profile_text = some_text("Replay dir error", &err);
         }
         self.app.replay_storage = Some(storage);
 
@@ -148,7 +148,7 @@ impl AppRuntime {
             Err(err) => {
                 tracing::error!(error = %err, "failed to load opponent history");
                 self.app.opponent_history = Default::default();
-                self.app.last_profile_text = Some(format!("History load error: {err}"));
+                self.app.last_profile_text = some_text("History load error", &err);
             }
         }
         self.history = Some(history);

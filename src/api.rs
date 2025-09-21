@@ -283,8 +283,15 @@ impl ApiHandle {
         }
         // Build recent results (newest first): win => true, loss => false
         let mut results: Vec<bool> = Vec::new();
+        let mut total_wins: u32 = 0;
+        let mut total_games: u32 = 0;
         for (m, _o, _ts) in games.iter() {
-            results.push(m.result.eq_ignore_ascii_case("win"));
+            let is_win = m.result.eq_ignore_ascii_case("win");
+            if is_win {
+                total_wins = total_wins.saturating_add(1);
+            }
+            total_games = total_games.saturating_add(1);
+            results.push(is_win);
         }
         // Format lines as XvX with main race initial
         let main_label = |r: &str| match r {
@@ -323,6 +330,17 @@ impl ApiHandle {
                     ));
                 }
             }
+        }
+        if total_games > 0 {
+            let overall_pct = ((total_wins as f32) / (total_games as f32)) * 100.0;
+            lines.push(format!(
+                "Overall: {:.0}% ({} / {})",
+                overall_pct.round(),
+                total_wins,
+                total_games
+            ));
+        } else {
+            lines.push("Overall: N/A".to_string());
         }
         (
             main_race.map(|s| main_label(&s).to_string()),
