@@ -16,7 +16,6 @@ mod search;
 mod tui;
 mod ui;
 
-use std::path::Path;
 use std::sync::OnceLock;
 
 use error::AppError;
@@ -28,7 +27,7 @@ static TRACING_INIT: OnceLock<()> = OnceLock::new();
 fn init_logging() {
     TRACING_INIT.get_or_init(|| {
         let log_dir = crate::config::default_log_dir();
-        if let Err(err) = std::fs::create_dir_all(log_dir) {
+        if let Err(err) = std::fs::create_dir_all(&log_dir) {
             eprintln!(
                 "failed to create log directory {}: {err}",
                 log_dir.display()
