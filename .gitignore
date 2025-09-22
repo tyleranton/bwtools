@@ -1,10 +1,10 @@
-AGENTS.md
-IDEAS.md
+install-bwtools.sh
 
 logs
 
 # Rust build
 /target
+/result
 **/*.rs.bk
 
 # Nix/Direnv
