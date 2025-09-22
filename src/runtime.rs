@@ -230,11 +230,7 @@ fn some_text<E>(prefix: &str, err: &E) -> Option<String>
 where
     E: std::fmt::Display + std::fmt::Debug,
 {
-    let mut rendered = String::new();
-    if std::fmt::write(&mut rendered, format_args!("{err}")).is_err() {
-        tracing::error!(error = ?err, "failed to format error for debug text");
-        rendered = format!("{err:?}");
-    }
+    let rendered = crate::error::render_error_message(err);
     Some(format!("{prefix}: {rendered}"))
 }
 

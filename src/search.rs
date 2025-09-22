@@ -1,4 +1,5 @@
 use crate::app::App;
+use crate::error::render_error_message;
 use thiserror::Error;
 
 pub struct SearchService;
@@ -79,7 +80,7 @@ impl SearchService {
                     }
                 }
                 Err(e) => {
-                    app.search.error = Some(e.to_string());
+                    app.search.error = Some(render_error_message(&e));
                     return Err(SearchError::Api(e));
                 }
             }

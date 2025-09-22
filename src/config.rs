@@ -111,6 +111,10 @@ fn bundle_root() -> PathBuf {
     env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
+pub fn default_log_dir() -> PathBuf {
+    bundle_root().join("logs")
+}
+
 fn default_replay_library_root() -> PathBuf {
     if cfg!(target_os = "windows") {
         let home = env::var("USERPROFILE").unwrap_or_else(|_| String::from("."));

@@ -4,6 +4,17 @@ use std::io;
 use anyhow::Error as AnyhowError;
 use thiserror::Error;
 
+pub fn render_error_message<E>(err: &E) -> String
+where
+    E: std::fmt::Display + std::fmt::Debug,
+{
+    let mut rendered = String::new();
+    if std::fmt::write(&mut rendered, format_args!("{err}")).is_err() {
+        rendered = format!("{err:?}");
+    }
+    rendered
+}
+
 #[derive(Debug, Error)]
 pub enum AppError {
     #[error("terminal setup failed")]

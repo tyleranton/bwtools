@@ -15,6 +15,7 @@ use thiserror::Error;
 
 use crate::api::ApiHandle;
 use crate::config::Config;
+use crate::error::render_error_message;
 
 pub struct ReplayStorage {
     root: PathBuf,
@@ -104,7 +105,7 @@ pub struct ReplayDownloadSummary {
 
 impl ReplayDownloadSummary {
     fn record_error(&mut self, err: anyhow::Error) {
-        self.errors.push(err.to_string());
+        self.errors.push(render_error_message(&err));
     }
 }
 
