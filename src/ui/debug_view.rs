@@ -12,6 +12,15 @@ pub fn render_debug(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app
         .split(area);
 
     let mut resp_lines: Vec<Line> = Vec::new();
+    if let Some(port_text) = &app.debug_port_text {
+        resp_lines.push(Line::from(Span::styled(
+            port_text.clone(),
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )));
+        resp_lines.push(Line::from(Span::raw(String::new())));
+    }
     if let Some(txt) = &app.last_profile_text {
         for l in txt.lines() {
             resp_lines.push(Line::from(Span::raw(l.to_string())));

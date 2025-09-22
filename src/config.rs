@@ -67,33 +67,11 @@ fn default_cache_dir() -> PathBuf {
 }
 
 fn default_rating_output_path() -> PathBuf {
-    if cfg!(target_os = "windows") {
-        let home = env::var("USERPROFILE").unwrap_or_else(|_| String::from("."));
-        PathBuf::from(home)
-            .join("bwtools")
-            .join("overlay")
-            .join("self_rating.txt")
-    } else {
-        let home = env::var_os("HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("."));
-        home.join("bwtools").join("overlay").join("self_rating.txt")
-    }
+    bundle_root().join("overlay").join("self_rating.txt")
 }
 
 fn default_history_path() -> PathBuf {
-    if cfg!(target_os = "windows") {
-        let home = env::var("USERPROFILE").unwrap_or_else(|_| String::from("."));
-        PathBuf::from(home)
-            .join("bwtools")
-            .join("history")
-            .join("opponents.json")
-    } else {
-        let home = env::var_os("HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("."));
-        home.join("bwtools").join("history").join("opponents.json")
-    }
+    bundle_root().join("history").join("opponents.json")
 }
 
 fn default_last_replay_path() -> PathBuf {
@@ -121,20 +99,16 @@ fn default_screp_cmd() -> String {
 }
 
 fn default_opponent_output_path() -> PathBuf {
-    if cfg!(target_os = "windows") {
-        let home = env::var("USERPROFILE").unwrap_or_else(|_| String::from("."));
-        PathBuf::from(home)
-            .join("bwtools")
-            .join("overlay")
-            .join("opponent_info.txt")
-    } else {
-        let home = env::var_os("HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("."));
-        home.join("bwtools")
-            .join("overlay")
-            .join("opponent_info.txt")
+    bundle_root().join("overlay").join("opponent_info.txt")
+}
+
+fn bundle_root() -> PathBuf {
+    if let Ok(exe) = env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        return dir.to_path_buf();
     }
+    env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
 fn default_replay_library_root() -> PathBuf {

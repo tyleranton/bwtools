@@ -87,7 +87,7 @@ pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app:
         {
             opponent_profile_lines.push(Line::from(vec![
                 Span::styled(
-                    "Record vs you: ",
+                    "Record: ",
                     Style::default()
                         .fg(Color::Yellow)
                         .add_modifier(Modifier::BOLD),

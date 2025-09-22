@@ -39,7 +39,10 @@ fn detect_port(app: &mut App, cfg: &Config, reader: &mut CacheReader) {
     }
 
     match reader.parse_for_port(cfg.scan_window_secs) {
-        Ok(Some(port)) => app.port = Some(port),
+        Ok(Some(port)) => {
+            app.debug_port_text = Some(format!("Detected API port: {}", port));
+            app.port = Some(port);
+        }
         Ok(None) => {}
         Err(err) => tracing::warn!(error = %err, "failed to read port from cache"),
     }
