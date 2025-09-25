@@ -128,7 +128,7 @@ pub fn render_replays(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
                 .add_modifier(Modifier::BOLD),
         )));
         summary_lines.push(Line::from(Span::raw(format!(
-            "Requested: {}  Saved: {}  Skipped: {}  Filtered: {}",
+            "Requested: {}  Saved: {}  Skipped existing: {}  Filtered/skipped: {}",
             summary.requested, summary.saved, summary.skipped_existing, summary.filtered_short
         ))));
         if !summary.errors.is_empty() {

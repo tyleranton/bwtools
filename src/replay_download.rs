@@ -160,7 +160,6 @@ impl ReplayDownloadJob {
             .and_then(parse_matchup_filter);
         let filtered = candidates
             .into_iter()
-            .filter(is_one_v_one)
             .filter(|replay| match &matchup_filter {
                 Some((a, b)) => replay_matches(&replay.attributes.replay_player_races, (*a, *b)),
                 None => true,
@@ -402,9 +401,9 @@ fn extract_players(overview: &str, target_toon: &str) -> Option<(String, String,
     }
     let target_lower = target_toon.to_ascii_lowercase();
     let mut seen = std::collections::HashSet::new();
-    let mut ordered: Vec<(String, String)> = Vec::new();
+    let mut ordered: Vec<(u8, String, String)> = Vec::new();
 
-    for (_team, race, name) in players {
+    for (team, race, name) in players {
         let key = name.trim();
         if key.is_empty() {
             continue;
@@ -414,37 +413,48 @@ fn extract_players(overview: &str, target_toon: &str) -> Option<(String, String,
             continue;
         }
         let race_label = race.unwrap_or_else(|| "Unknown".to_string());
-        ordered.push((key.to_string(), race_label));
+        ordered.push((team, race_label, key.to_string()));
     }
 
     if ordered.is_empty() {
         return None;
     }
 
-    let mut main: Option<(String, String)> = None;
-    let mut opp: Option<(String, String)> = None;
+    let mut main_entry: Option<(u8, String, String)> = None;
+    let mut others: Vec<(u8, String, String)> = Vec::new();
 
-    for (name, race) in ordered.iter() {
+    for (team, race, name) in ordered.into_iter() {
         if name.to_ascii_lowercase() == target_lower {
-            main = Some((name.clone(), race.clone()));
-        } else if opp.is_none() {
-            opp = Some((name.clone(), race.clone()));
+            if main_entry.is_none() {
+                main_entry = Some((team, race.clone(), name.clone()));
+            }
+        } else {
+            others.push((team, race, name));
         }
     }
 
-    if let Some(main) = main {
-        let opponent = opp.unwrap_or_else(|| ("Opponent".to_string(), "Unknown".to_string()));
-        Some((main.0, main.1, opponent.0, opponent.1))
-    } else if ordered.len() >= 2 {
-        Some((
-            ordered[0].0.clone(),
-            ordered[0].1.clone(),
-            ordered[1].0.clone(),
-            ordered[1].1.clone(),
-        ))
-    } else {
-        None
+    let (main_team, main_race, main_name) = main_entry?;
+    if main_team == 0 || main_team > 2 {
+        // Target toon was only observing.
+        return None;
     }
+
+    let mut opponent: Option<(u8, String, String)> = None;
+    for (team, race, name) in others.into_iter() {
+        if team == main_team {
+            continue;
+        }
+        if team > 0 && team <= 2 {
+            opponent = Some((team, race.clone(), name.clone()));
+            break;
+        }
+        if opponent.is_none() {
+            opponent = Some((team, race, name));
+        }
+    }
+
+    let (_, opp_race, opp_name) = opponent?;
+    Some((main_name, main_race, opp_name, opp_race))
 }
 
 fn build_filename(prefix: Option<&str>, p1: &str, r1: &str, p2: &str, r2: &str) -> String {
@@ -532,26 +542,4 @@ fn replay_date_prefix(ts_secs: u64) -> Option<String> {
         return None;
     }
     DateTime::<Utc>::from_timestamp(ts_secs as i64, 0).map(|dt| dt.format("%Y%m%d").to_string())
-}
-
-fn is_one_v_one(replay: &bw_web_api_rs::models::common::Replay) -> bool {
-    let names = split_non_empty(&replay.attributes.replay_player_names);
-    if names.len() != 2 {
-        return false;
-    }
-    let races = split_non_empty(&replay.attributes.replay_player_races);
-    if races.len() != 2 {
-        return false;
-    }
-    let types = split_non_empty(&replay.attributes.replay_player_types);
-    let human_count = types.iter().filter(|t| t.trim() == "1").count();
-    human_count == 2
-}
-
-fn split_non_empty(input: &str) -> Vec<&str> {
-    input
-        .split(',')
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .collect()
 }
