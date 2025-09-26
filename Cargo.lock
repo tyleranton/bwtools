@@ -192,9 +192,9 @@ checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
 name = "chrome-cache-parser"
-version = "0.2.4"
+version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2feabfe36dc72ea4f94c613eb1d41d963af6434925b0dfa85d1aee9d0a87045"
+checksum = "0bfe2c170d130c61814298e573aa47686f3427a520f217c2f9dd6a45e78b22a6"
 dependencies = [
  "chrono",
  "static_assertions",
