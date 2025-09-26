@@ -9,6 +9,7 @@ mod input;
 mod overlay;
 mod players;
 mod profile;
+mod profile_history;
 mod replay;
 mod replay_download;
 mod runtime;

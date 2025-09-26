@@ -10,7 +10,7 @@ pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app:
     let segments = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(7),
+            Constraint::Length(9),
             Constraint::Min(0),
             Constraint::Length(1),
         ])
@@ -33,6 +33,7 @@ pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app:
         app.self_profile_rating,
         app.self_main_race.as_deref(),
         &app.self_matchups,
+        Some((app.self_dodged, app.opponent_dodged)),
     );
     frame.render_widget(stats_block, stats_area);
     frame.render_widget(
@@ -96,8 +97,12 @@ pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app:
             ]));
         }
 
-        let mut matchup_lines =
-            profile_stat_lines(rating, app.opponent_race.as_deref(), &app.opponent_matchups);
+        let mut matchup_lines = profile_stat_lines(
+            rating,
+            app.opponent_race.as_deref(),
+            &app.opponent_matchups,
+            None,
+        );
         if !matchup_lines.is_empty() {
             matchup_lines.remove(0); // drop rating/race line (already in header)
         }

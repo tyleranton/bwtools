@@ -8,6 +8,7 @@ use ratatui::layout::Rect;
 use crate::api::ApiHandle;
 use crate::history::OpponentRecord;
 use crate::players::{PlayerDirectory, PlayerEntry};
+use crate::profile_history::MatchOutcome;
 use crate::replay_download::{ReplayDownloadRequest, ReplayDownloadSummary, ReplayStorage};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,6 +111,13 @@ impl Default for ReplayState {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct DodgeCandidate {
+    pub opponent: String,
+    pub outcome: MatchOutcome,
+    pub approx_timestamp: Option<u64>,
+}
+
 #[derive(Debug, Default)]
 pub struct PlayersState {
     pub directory: Option<PlayerDirectory>,
@@ -161,7 +169,10 @@ pub struct App {
     pub main_opponent_toons_rect: Option<Rect>,
     pub self_main_race: Option<String>,
     pub self_matchups: Vec<String>,
+    pub self_dodged: u32,
+    pub opponent_dodged: u32,
     pub players: PlayersState,
+    pub last_dodge_candidate: Option<DodgeCandidate>,
 }
 
 impl App {
@@ -234,7 +245,10 @@ impl Default for App {
             main_opponent_toons_rect: None,
             self_main_race: None,
             self_matchups: Vec::new(),
+            self_dodged: 0,
+            opponent_dodged: 0,
             players: PlayersState::default(),
+            last_dodge_candidate: None,
         }
     }
 }

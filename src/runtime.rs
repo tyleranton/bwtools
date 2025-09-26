@@ -14,6 +14,7 @@ use crate::history::{FileHistorySource, HistoryService};
 use crate::overlay::OverlayService;
 use crate::players::PlayerDirectory;
 use crate::profile::ProfileService;
+use crate::profile_history::ProfileHistoryService;
 use crate::replay::ReplayService;
 use crate::replay_download::{ReplayDownloadRequest, ReplayStorage};
 use crate::search::SearchService;
@@ -29,6 +30,7 @@ pub struct AppRuntime {
     last_tick: Instant,
     detection: DetectionEngine,
     history: Option<HistoryService<FileHistorySource>>,
+    profile_history: ProfileHistoryService,
 }
 
 impl AppRuntime {
@@ -41,6 +43,14 @@ impl AppRuntime {
 
         let detection = DetectionEngine::new(cfg.cache_dir.clone(), cfg.refresh_interval);
 
+        let profile_history = match ProfileHistoryService::new(cfg.profile_history_path.clone()) {
+            Ok(service) => service,
+            Err(err) => {
+                tracing::error!(error = %err, "failed to load profile history; starting empty");
+                ProfileHistoryService::empty(cfg.profile_history_path.clone())
+            }
+        };
+
         let mut runtime = Self {
             tick_rate: cfg.tick_rate,
             last_tick: Instant::now(),
@@ -49,6 +59,7 @@ impl AppRuntime {
             terminal,
             detection,
             history: None,
+            profile_history,
         };
         runtime.bootstrap()?;
         Ok(runtime)
@@ -87,7 +98,11 @@ impl AppRuntime {
 
                 if self.app.is_ready()
                     && !self.app.profile_fetched
-                    && let Err(err) = ProfileService::fetch_self_profile(&mut self.app, &self.cfg)
+                    && let Err(err) = ProfileService::fetch_self_profile(
+                        &mut self.app,
+                        &self.cfg,
+                        Some(&mut self.profile_history),
+                    )
                 {
                     tracing::error!(error = %err, "fetch self profile failed");
                     self.app.last_profile_text = some_text("Profile error", &err);
@@ -98,7 +113,11 @@ impl AppRuntime {
                     tracing::warn!(error = %err, "search run failed");
                 }
                 if self.app.is_ready()
-                    && let Err(err) = ProfileService::poll_self_rating(&mut self.app, &self.cfg)
+                    && let Err(err) = ProfileService::poll_self_rating(
+                        &mut self.app,
+                        &self.cfg,
+                        Some(&mut self.profile_history),
+                    )
                 {
                     tracing::error!(error = %err, "poll self rating failed");
                     self.app.last_profile_text = some_text("Profile error", &err);
@@ -109,9 +128,12 @@ impl AppRuntime {
                 }
                 self.app.poll_replay_job();
 
-                if let Err(err) =
-                    ReplayService::tick(&mut self.app, &self.cfg, self.history.as_ref())
-                {
+                if let Err(err) = ReplayService::tick(
+                    &mut self.app,
+                    &self.cfg,
+                    self.history.as_ref(),
+                    &mut self.profile_history,
+                ) {
                     tracing::error!(error = %err, "replay service tick failed");
                     self.app.last_profile_text = some_text("Replay error", &err);
                 }

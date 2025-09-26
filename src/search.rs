@@ -70,7 +70,8 @@ impl SearchService {
                             } else {
                                 app.search.matches.clear();
                             }
-                            let (mr, lines, _results) = api.profile_stats_last100(&profile, &name);
+                            let (mr, lines, _results, _, _) =
+                                api.profile_stats_last100(&profile, &name, None, None);
                             app.search.main_race = mr;
                             app.search.matchups = lines;
                         }

@@ -5,4 +5,4 @@ mod search;
 mod state;
 
 #[allow(unused_imports)]
-pub use state::{App, PlayersState, ReplayFocus, ReplayState, SearchState, View};
+pub use state::{App, DodgeCandidate, PlayersState, ReplayFocus, ReplayState, SearchState, View};

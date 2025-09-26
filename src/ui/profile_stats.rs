@@ -5,6 +5,7 @@ pub fn profile_stat_lines(
     rating: Option<u32>,
     main_race: Option<&str>,
     matchups: &[String],
+    dodges: Option<(u32, u32)>,
 ) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
 
@@ -54,6 +55,26 @@ pub fn profile_stat_lines(
                 lines.push(Line::from(Span::raw(entry.clone())));
             }
         }
+    }
+
+    if let Some((self_dodged, opponent_dodged)) = dodges {
+        lines.push(Line::from(vec![
+            Span::styled(
+                "Dodged: ",
+                Style::default()
+                    .fg(Color::Magenta)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(self_dodged.to_string()),
+            Span::raw("    "),
+            Span::styled(
+                "Opp. Dodged: ",
+                Style::default()
+                    .fg(Color::Magenta)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(opponent_dodged.to_string()),
+        ]));
     }
 
     lines

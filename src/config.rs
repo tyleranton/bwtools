@@ -13,6 +13,7 @@ pub struct Config {
     pub rating_output_enabled: bool,
     pub rating_output_path: PathBuf,
     pub opponent_history_path: PathBuf,
+    pub profile_history_path: PathBuf,
     pub last_replay_path: PathBuf,
     pub screp_cmd: String,
     pub replay_settle: Duration,
@@ -35,6 +36,7 @@ impl Default for Config {
             rating_output_enabled: true,
             rating_output_path: default_rating_output_path(),
             opponent_history_path: default_history_path(),
+            profile_history_path: default_profile_history_path(),
             last_replay_path: default_last_replay_path(),
             screp_cmd: default_screp_cmd(),
             replay_settle: Duration::from_millis(500),
@@ -72,6 +74,10 @@ fn default_rating_output_path() -> PathBuf {
 
 fn default_history_path() -> PathBuf {
     bundle_root().join("history").join("opponents.json")
+}
+
+fn default_profile_history_path() -> PathBuf {
+    bundle_root().join("history").join("profile_history.json")
 }
 
 fn default_last_replay_path() -> PathBuf {

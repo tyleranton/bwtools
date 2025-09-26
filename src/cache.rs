@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
@@ -8,6 +9,14 @@ use url::Url;
 
 fn extract_port(url: &str) -> Option<u16> {
     Url::parse(url).ok().and_then(|parsed| parsed.port())
+}
+
+fn cache_entry_key(entry: &chrome_cache_parser::block_file::BlockFileCacheEntry) -> Option<String> {
+    let mut rendered = String::new();
+    if write!(&mut rendered, "{}", entry.key).is_err() {
+        return None;
+    }
+    Some(rendered)
 }
 
 fn decode_segment(seg: &str) -> String {
@@ -86,7 +95,7 @@ impl CacheReader {
         let latest = entries
             .filter_map(|e| {
                 let entry = e.get().ok()?;
-                let key = entry.key.to_string();
+                let key = cache_entry_key(entry)?;
                 if !key.contains("/web-api/") {
                     return None;
                 }
@@ -116,7 +125,7 @@ impl CacheReader {
         let latest = entries
             .filter_map(|e| {
                 let entry = e.get().ok()?;
-                let key = entry.key.to_string();
+                let key = cache_entry_key(entry)?;
                 if !(key.contains("/web-api/v2/aurora-profile-by-toon/")
                     && key.contains("scr_mmgameloading"))
                 {
@@ -151,7 +160,7 @@ impl CacheReader {
         let latest = entries
             .filter_map(|e| {
                 let entry = e.get().ok()?;
-                let key = entry.key.to_string();
+                let key = cache_entry_key(entry)?;
                 if !(key.contains("/web-api/v2/aurora-profile-by-toon/")
                     && key.contains("scr_mmgameloading"))
                 {
@@ -178,7 +187,7 @@ impl CacheReader {
         let latest = entries
             .filter_map(|e| {
                 let entry = e.get().ok()?;
-                let key = entry.key.to_string();
+                let key = cache_entry_key(entry)?;
                 if !(key.contains("/web-api/v2/aurora-profile-by-toon/")
                     && key.contains("scr_tooninfo"))
                 {
@@ -205,7 +214,7 @@ impl CacheReader {
         let mut items: Vec<(String, i64, DateTime<Utc>)> = entries
             .filter_map(|e| {
                 let entry = e.get().ok()?;
-                let key = entry.key.to_string();
+                let key = cache_entry_key(entry)?;
                 if !key.contains("/web-api/") {
                     return None;
                 }

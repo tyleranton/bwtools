@@ -105,6 +105,7 @@ pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
             app.search.rating,
             app.search.main_race.as_deref(),
             &app.search.matchups,
+            None,
         );
         if let Some(err) = &app.search.error {
             prof_lines.push(Line::from(Span::styled(

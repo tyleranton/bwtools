@@ -17,13 +17,10 @@
 
         bwtoolsPackage = pkgs.rustPlatform.buildRustPackage {
           pname = "bwtools";
-          version = "0.2.9";
+          version = "0.3.0";
           src = ./.;
           cargoLock = {
             lockFile = ./Cargo.lock;
-            outputHashes = {
-              "chrome-cache-parser-0.2.3" = "sha256-fpgAV26pmde6ETdcNPwkdfwS0aJKLXtzcRStPYll07g=";
-            };
           };
 
           nativeBuildInputs = [ pkgs.pkg-config ];

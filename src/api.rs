@@ -3,6 +3,8 @@ use bw_web_api_rs::models::aurora_profile::{ScrMmGameLoading, ScrProfile, ScrToo
 use bw_web_api_rs::models::matchmaker_player_info::MatchmakerPlayerInfo;
 use bw_web_api_rs::{ApiClient, ApiConfig, types::Gateway};
 
+use crate::profile_history::{MatchOutcome, ProfileHistoryKey, ProfileHistoryService, StoredMatch};
+
 pub struct ApiHandle {
     client: ApiClient,
     rt: tokio::runtime::Runtime,
@@ -220,16 +222,11 @@ impl ApiHandle {
         &self,
         profile: &ScrProfile,
         main_toon: &str,
-    ) -> (Option<String>, Vec<String>, Vec<bool>) {
-        // Collect 1v1 games with real players and identify main player and opponent with races
-        // Sort by create_time desc, then take 100
-        let mut games: Vec<(
-            &bw_web_api_rs::models::common::Player,
-            &bw_web_api_rs::models::common::Player,
-            u64,
-        )> = Vec::new();
+        mut profile_history: Option<&mut ProfileHistoryService>,
+        history_key: Option<&ProfileHistoryKey>,
+    ) -> (Option<String>, Vec<String>, Vec<bool>, u32, u32) {
+        let mut matches: Vec<StoredMatch> = Vec::new();
         for g in profile.game_results.iter() {
-            // Filter players
             let actual: Vec<&bw_web_api_rs::models::common::Player> = g
                 .players
                 .iter()
@@ -238,7 +235,6 @@ impl ApiHandle {
             if actual.len() != 2 {
                 continue;
             }
-            // Find main
             let mi = if actual[0].toon.eq_ignore_ascii_case(main_toon) {
                 0
             } else if actual[1].toon.eq_ignore_ascii_case(main_toon) {
@@ -248,52 +244,91 @@ impl ApiHandle {
             };
             let oi = 1 - mi;
             let ts = g.create_time.parse::<u64>().unwrap_or(0);
-            games.push((actual[mi], actual[oi], ts));
+            let main_player = actual[mi];
+            let opp_player = actual[oi];
+            let result = if main_player.result.eq_ignore_ascii_case("win") {
+                MatchOutcome::Win
+            } else {
+                MatchOutcome::Loss
+            };
+            let opponent_name = if opp_player.toon.trim().is_empty() {
+                "Unknown".to_string()
+            } else {
+                opp_player.toon.clone()
+            };
+            matches.push(StoredMatch {
+                timestamp: ts,
+                opponent: opponent_name,
+                opponent_race: opp_player.attributes.race.clone(),
+                main_race: main_player.attributes.race.clone(),
+                result,
+            });
         }
-        games.sort_by(|a, b| b.2.cmp(&a.2));
-        games.truncate(100);
+        matches.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
 
-        // Determine main race by most frequent race of main player
-        let mut rc = std::collections::HashMap::new();
-        for (m, _, _) in games.iter() {
-            if let Some(r) = &m.attributes.race {
-                *rc.entry(r.to_lowercase()).or_insert(0usize) += 1;
+        let combined =
+            if let (Some(history), Some(key)) = (profile_history.as_deref_mut(), history_key) {
+                match history.merge_matches(key, matches.clone()) {
+                    Ok(merged) => merged,
+                    Err(err) => {
+                        tracing::error!(error = %err, "failed to merge profile history");
+                        matches.into_iter().take(100).collect()
+                    }
+                }
+            } else {
+                matches.into_iter().take(100).collect()
+            };
+
+        let mut race_counts = std::collections::HashMap::new();
+        for m in combined.iter() {
+            if let Some(r) = &m.main_race {
+                *race_counts.entry(r.to_lowercase()).or_insert(0usize) += 1;
             }
         }
-        let main_race = rc.into_iter().max_by_key(|(_, n)| *n).map(|(r, _)| r);
+        let main_race_lower = race_counts
+            .into_iter()
+            .max_by_key(|(_, count)| *count)
+            .map(|(race, _)| race);
 
-        // Compute matchup winrates for games where main played main_race
-        let mut vs: std::collections::HashMap<String, (u32, u32)> =
-            std::collections::HashMap::new();
-        if let Some(ref mr) = main_race {
-            for (m, o, _) in games.iter() {
-                let mrace = m.attributes.race.as_deref().unwrap_or("").to_lowercase();
+        let mut matchup = std::collections::HashMap::new();
+        if let Some(ref mr) = main_race_lower {
+            for m in combined.iter() {
+                let mrace = m.main_race.as_deref().unwrap_or("").to_lowercase();
                 if mrace != *mr {
                     continue;
                 }
-                let o_race = o.attributes.race.as_deref().unwrap_or("").to_lowercase();
-                let entry = vs.entry(o_race).or_insert((0, 0));
-                // wins, total
-                entry.1 += 1;
-                let res = m.result.to_lowercase();
-                if res == "win" {
-                    entry.0 += 1;
+                let opp = m.opponent_race.as_deref().unwrap_or("").to_lowercase();
+                if !m.result.counts_for_record() {
+                    continue;
+                }
+                let entry = matchup.entry(opp).or_insert((0u32, 0u32));
+                entry.1 = entry.1.saturating_add(1);
+                if m.result.is_win() {
+                    entry.0 = entry.0.saturating_add(1);
                 }
             }
         }
-        // Build recent results (newest first): win => true, loss => false
+
         let mut results: Vec<bool> = Vec::new();
         let mut total_wins: u32 = 0;
         let mut total_games: u32 = 0;
-        for (m, _o, _ts) in games.iter() {
-            let is_win = m.result.eq_ignore_ascii_case("win");
-            if is_win {
-                total_wins = total_wins.saturating_add(1);
+        let mut self_dodged: u32 = 0;
+        let mut opponent_dodged: u32 = 0;
+        for m in combined.iter() {
+            if m.result.counts_for_record() {
+                let is_win = m.result.is_win();
+                total_games = total_games.saturating_add(1);
+                if is_win {
+                    total_wins = total_wins.saturating_add(1);
+                }
+                results.push(is_win);
+            } else if m.result.is_self_dodged() {
+                self_dodged = self_dodged.saturating_add(1);
+            } else if m.result.is_opponent_dodged() {
+                opponent_dodged = opponent_dodged.saturating_add(1);
             }
-            total_games = total_games.saturating_add(1);
-            results.push(is_win);
         }
-        // Format lines as XvX with main race initial
+
         let main_label = |r: &str| match r {
             "protoss" => "Protoss",
             "terran" => "Terran",
@@ -312,12 +347,13 @@ impl ApiHandle {
             "zerg" => "Z",
             _ => "?",
         };
+
         let order = ["protoss", "terran", "zerg"];
         let mut lines: Vec<String> = Vec::new();
-        let mr_init = main_race.as_deref().map(main_initial).unwrap_or("?");
+        let mr_init = main_race_lower.as_deref().map(main_initial).unwrap_or("?");
         #[allow(clippy::collapsible_if)]
         for r in order.iter() {
-            if let Some((wins, total)) = vs.get(*r) {
+            if let Some((wins, total)) = matchup.get(*r) {
                 if *total > 0 {
                     let pct = ((*wins as f32) / (*total as f32)) * 100.0;
                     lines.push(format!(
@@ -331,21 +367,29 @@ impl ApiHandle {
                 }
             }
         }
+
         if total_games > 0 {
             let overall_pct = ((total_wins as f32) / (total_games as f32)) * 100.0;
             lines.push(format!(
                 "Overall: {:.0}% ({} / {})",
                 overall_pct.round(),
                 total_wins,
-                total_games
+                total_games,
             ));
         } else {
             lines.push("Overall: N/A".to_string());
         }
+
+        let main_race_display = main_race_lower
+            .as_deref()
+            .map(|race| main_label(race).to_string());
+
         (
-            main_race.map(|s| main_label(&s).to_string()),
+            main_race_display,
             lines,
             results,
+            self_dodged,
+            opponent_dodged,
         )
     }
 }
