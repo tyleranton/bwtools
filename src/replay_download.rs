@@ -138,83 +138,32 @@ impl ReplayDownloadJob {
         let manifest_path = self.storage.manifest_path();
         let mut manifest = ReplayManifest::load(&manifest_path);
 
-        let profile = match self
-            .api
-            .get_scr_profile(&self.request.toon, self.request.gateway)
-            .with_context(|| format!("failed to load profile for {}", self.request.toon))
-        {
-            Ok(p) => p,
+        let profile = match self.load_profile() {
+            Ok(profile) => profile,
             Err(err) => {
                 summary.record_error(err);
                 return summary;
             }
         };
 
-        let mut candidates: Vec<_> = profile.replays.into_iter().collect();
-        candidates.sort_by(|a, b| b.create_time.cmp(&a.create_time));
-
-        let matchup_filter = self
-            .request
-            .matchup
-            .as_deref()
-            .and_then(parse_matchup_filter);
-        let filtered = candidates
-            .into_iter()
-            .filter(|replay| match &matchup_filter {
-                Some((a, b)) => replay_matches(&replay.attributes.replay_player_races, (*a, *b)),
-                None => true,
-            })
-            .take(self.request.limit.min(20))
-            .collect::<Vec<_>>();
+        let filtered = self.filtered_replays(profile);
 
         summary.requested = filtered.len();
         if summary.requested == 0 {
             return summary;
         }
 
-        let client = match Client::builder()
-            .build()
-            .context("failed to create http client")
-        {
-            Ok(client) => client,
+        let ctx = match self.prepare_context() {
+            Ok(ctx) => ctx,
             Err(err) => {
                 summary.record_error(err);
                 return summary;
             }
         };
 
-        let storage_profile = self
-            .request
-            .alias
-            .as_deref()
-            .filter(|s| !s.trim().is_empty())
-            .unwrap_or(&self.request.toon);
-        let sanitized_profile = sanitize_component(storage_profile);
-        let matchup_label = self
-            .request
-            .matchup
-            .as_deref()
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "All".to_string());
-        let sanitized_matchup = sanitize_component(&matchup_label);
-        if let Err(err) = self
-            .storage
-            .ensure_matchup_dir(&sanitized_profile, &sanitized_matchup)
-            .with_context(|| format!("failed to prepare replay directory for {}", storage_profile))
-        {
-            summary.record_error(err);
-            return summary;
-        }
-
         for replay in filtered {
             summary.attempted += 1;
-            match self.process_replay(
-                &client,
-                &mut manifest,
-                &sanitized_profile,
-                &sanitized_matchup,
-                &replay,
-            ) {
+            match self.process_replay(&ctx, &mut manifest, &replay) {
                 Ok(Some(path)) => {
                     summary.saved += 1;
                     summary.saved_paths.push(path);
@@ -238,12 +187,70 @@ impl ReplayDownloadJob {
         summary
     }
 
+    fn load_profile(&self) -> Result<bw_web_api_rs::models::aurora_profile::ScrProfile> {
+        self.api
+            .get_scr_profile(&self.request.toon, self.request.gateway)
+            .with_context(|| format!("failed to load profile for {}", self.request.toon))
+    }
+
+    fn filtered_replays(
+        &self,
+        profile: bw_web_api_rs::models::aurora_profile::ScrProfile,
+    ) -> Vec<bw_web_api_rs::models::common::Replay> {
+        let mut candidates: Vec<_> = profile.replays.into_iter().collect();
+        candidates.sort_by(|a, b| b.create_time.cmp(&a.create_time));
+
+        let matchup_filter = self
+            .request
+            .matchup
+            .as_deref()
+            .and_then(parse_matchup_filter);
+
+        candidates
+            .into_iter()
+            .filter(|replay| match &matchup_filter {
+                Some((a, b)) => replay_matches(&replay.attributes.replay_player_races, (*a, *b)),
+                None => true,
+            })
+            .take(self.request.limit.min(20))
+            .collect()
+    }
+
+    fn prepare_context(&self) -> Result<DownloadContext> {
+        let client = Client::builder()
+            .build()
+            .context("failed to create http client")?;
+
+        let storage_profile = self
+            .request
+            .alias
+            .as_deref()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or(&self.request.toon);
+        let sanitized_profile = sanitize_component(storage_profile);
+        let matchup_label = self
+            .request
+            .matchup
+            .as_deref()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "All".to_string());
+        let sanitized_matchup = sanitize_component(&matchup_label);
+
+        let target_dir = self
+            .storage
+            .ensure_matchup_dir(&sanitized_profile, &sanitized_matchup)
+            .map_err(|e| anyhow!(e))
+            .with_context(|| {
+                format!("failed to prepare replay directory for {}", storage_profile)
+            })?;
+
+        Ok(DownloadContext { client, target_dir })
+    }
+
     fn process_replay(
         &self,
-        client: &Client,
+        ctx: &DownloadContext,
         manifest: &mut ReplayManifest,
-        sanitized_profile: &str,
-        sanitized_matchup: &str,
         replay: &bw_web_api_rs::models::common::Replay,
     ) -> Result<Option<PathBuf>, ReplayProcessError> {
         let detail = self
@@ -275,13 +282,10 @@ impl ReplayDownloadJob {
             return Err(ReplayProcessError::Other(anyhow!("empty replay url")));
         }
 
-        let target_dir = self
-            .storage
-            .ensure_matchup_dir(sanitized_profile, sanitized_matchup)
-            .map_err(|e| ReplayProcessError::Other(anyhow!(e).context("ensure matchup dir")))?;
-
-        let tmp_path = target_dir.join(format!(".tmp-{}.rep", truncate_identifier(&identifier)));
-        if let Err(err) = download_replay(client, &best.url, &tmp_path) {
+        let tmp_path = ctx
+            .target_dir
+            .join(format!(".tmp-{}.rep", truncate_identifier(&identifier)));
+        if let Err(err) = download_replay(&ctx.client, &best.url, &tmp_path) {
             let _ = fs::remove_file(&tmp_path);
             return Err(ReplayProcessError::Other(err));
         }
@@ -315,11 +319,11 @@ impl ReplayDownloadJob {
             &opp_name,
             &opp_race,
         );
-        let mut final_path = target_dir.join(&file_name);
+        let mut final_path = ctx.target_dir.join(&file_name);
         let mut counter = 1;
         while final_path.exists() {
             let alt = format!("{}-{}.rep", file_name.trim_end_matches(".rep"), counter);
-            final_path = target_dir.join(alt);
+            final_path = ctx.target_dir.join(alt);
             counter += 1;
         }
 
@@ -336,6 +340,11 @@ impl ReplayDownloadJob {
 
         Ok(Some(final_path))
     }
+}
+
+struct DownloadContext {
+    client: Client,
+    target_dir: PathBuf,
 }
 
 pub fn spawn_download_job(

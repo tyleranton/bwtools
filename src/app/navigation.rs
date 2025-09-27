@@ -1,5 +1,7 @@
 use crossterm::event::KeyCode;
 
+use crate::interaction::Intent;
+
 use super::{App, View};
 
 impl App {
@@ -22,96 +24,57 @@ impl App {
             View::Main | View::Debug => {}
         }
 
-        self.handle_global_navigation_key(code);
+        if let Some(intent) = global_intent(self.view, code, self.players.filtered.len()) {
+            intent.apply(self);
+        }
 
         if matches!(self.view, View::Players) {
             self.clamp_players_scroll();
         }
     }
+}
 
-    fn handle_global_navigation_key(&mut self, code: KeyCode) {
-        match code {
-            KeyCode::Up => {
-                if matches!(self.view, View::Debug) {
-                    self.debug.scroll = self.debug.scroll.saturating_sub(1);
-                } else if matches!(self.view, View::Players) {
-                    self.players.scroll = self.players.scroll.saturating_sub(1);
-                }
-            }
-            KeyCode::Down => {
-                if matches!(self.view, View::Debug) {
-                    self.debug.scroll = self.debug.scroll.saturating_add(1);
-                } else if matches!(self.view, View::Players) {
-                    let max_scroll = self
-                        .players
-                        .filtered
-                        .len()
-                        .saturating_sub(1)
-                        .min(u16::MAX as usize) as u16;
-                    self.players.scroll = self.players.scroll.saturating_add(1).min(max_scroll);
-                }
-            }
-            KeyCode::PageUp => {
-                if matches!(self.view, View::Debug) {
-                    self.debug.scroll = self.debug.scroll.saturating_sub(10);
-                } else if matches!(self.view, View::Players) {
-                    self.players.scroll = self.players.scroll.saturating_sub(10);
-                }
-            }
-            KeyCode::PageDown => {
-                if matches!(self.view, View::Debug) {
-                    self.debug.scroll = self.debug.scroll.saturating_add(10);
-                } else if matches!(self.view, View::Players) {
-                    let max_scroll = self
-                        .players
-                        .filtered
-                        .len()
-                        .saturating_sub(1)
-                        .min(u16::MAX as usize) as u16;
-                    self.players.scroll = self.players.scroll.saturating_add(10).min(max_scroll);
-                }
-            }
-            KeyCode::Home => {
-                if matches!(self.view, View::Debug) {
-                    self.debug.scroll = 0;
-                } else if matches!(self.view, View::Players) {
-                    self.players.scroll = 0;
-                }
-            }
-            KeyCode::End => {
-                if matches!(self.view, View::Debug) {
-                    self.debug.scroll = u16::MAX;
-                } else if matches!(self.view, View::Players) {
-                    let max_scroll = self
-                        .players
-                        .filtered
-                        .len()
-                        .saturating_sub(1)
-                        .min(u16::MAX as usize) as u16;
-                    self.players.scroll = max_scroll;
-                }
-            }
-            KeyCode::Char('k') => {
-                if matches!(self.view, View::Debug) {
-                    self.debug.scroll = self.debug.scroll.saturating_sub(1);
-                } else if matches!(self.view, View::Players) {
-                    self.players.scroll = self.players.scroll.saturating_sub(1);
-                }
-            }
-            KeyCode::Char('j') => {
-                if matches!(self.view, View::Debug) {
-                    self.debug.scroll = self.debug.scroll.saturating_add(1);
-                } else if matches!(self.view, View::Players) {
-                    let max_scroll = self
-                        .players
-                        .filtered
-                        .len()
-                        .saturating_sub(1)
-                        .min(u16::MAX as usize) as u16;
-                    self.players.scroll = self.players.scroll.saturating_add(1).min(max_scroll);
-                }
-            }
-            _ => {}
-        }
+fn global_intent(view: View, code: KeyCode, players_len: usize) -> Option<Intent> {
+    match view {
+        View::Debug => debug_intent(code),
+        View::Players => player_intent(code, players_len),
+        _ => None,
+    }
+}
+
+fn debug_intent(code: KeyCode) -> Option<Intent> {
+    match code {
+        KeyCode::Up | KeyCode::Char('k') => Some(Intent::AdjustDebugScroll { delta: -1 }),
+        KeyCode::Down | KeyCode::Char('j') => Some(Intent::AdjustDebugScroll { delta: 1 }),
+        KeyCode::PageUp => Some(Intent::AdjustDebugScroll { delta: -10 }),
+        KeyCode::PageDown => Some(Intent::AdjustDebugScroll { delta: 10 }),
+        KeyCode::Home => Some(Intent::SetDebugScroll { value: 0 }),
+        KeyCode::End => Some(Intent::SetDebugScroll { value: i32::MAX }),
+        _ => None,
+    }
+}
+
+fn player_intent(code: KeyCode, len: usize) -> Option<Intent> {
+    let max_scroll = len.saturating_sub(1).min(u16::MAX as usize) as u16;
+    match code {
+        KeyCode::Up | KeyCode::Char('k') => Some(Intent::AdjustPlayerScroll {
+            delta: -1,
+            max: max_scroll,
+        }),
+        KeyCode::Down | KeyCode::Char('j') => Some(Intent::AdjustPlayerScroll {
+            delta: 1,
+            max: max_scroll,
+        }),
+        KeyCode::PageUp => Some(Intent::AdjustPlayerScroll {
+            delta: -10,
+            max: max_scroll,
+        }),
+        KeyCode::PageDown => Some(Intent::AdjustPlayerScroll {
+            delta: 10,
+            max: max_scroll,
+        }),
+        KeyCode::Home => Some(Intent::SetPlayerScroll { value: 0 }),
+        KeyCode::End => Some(Intent::SetPlayerScroll { value: max_scroll }),
+        _ => None,
     }
 }

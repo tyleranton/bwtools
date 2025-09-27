@@ -143,68 +143,93 @@ mod screp_watch {
         history: Option<&HistoryService<FileHistorySource>>,
         profile_history: &mut ProfileHistoryService,
     ) -> Result<(), ReplayError> {
-        let overview = match run_screp_overview(cfg, &cfg.last_replay_path) {
-            Ok(text) => text,
-            Err(err) => {
-                tracing::error!(error = %err, "failed to run screp on last replay");
-                return Ok(());
-            }
+        let Some((winner, players, duration)) = load_latest_overview(cfg)? else {
+            return Ok(());
         };
-
-        let (winner, players) = parse_screp_overview(&overview);
-        let duration = parse_screp_duration_seconds(&overview);
         app.replay_watch.last_dodge_candidate = None;
         if let Some(self_name) = &app.self_profile.name {
-            let mut self_team: Option<u8> = None;
-            for (team, _race, name) in players.iter() {
-                if name.eq_ignore_ascii_case(self_name) {
-                    self_team = Some(*team);
-                }
-            }
-            if let Some(st) = self_team {
-                if let Some((opp_team, opp_name, opp_race)) =
-                    players.iter().find_map(|(team, race, name)| {
-                        if *team != st && *team != 0 {
-                            Some((*team, name.clone(), race.clone()))
-                        } else {
-                            None
-                        }
-                    })
+            if let Some(resolved) = resolve_opponent(&players, self_name) {
+                if let Some(duration_secs) = duration
+                    && duration_secs < 60
                 {
-                    if let Some(duration_secs) = duration
-                        && duration_secs < 60
-                    {
-                        let outcome_guess = winner.as_deref().and_then(|winner_label| {
-                            classify_short_game_outcome(
-                                winner_label,
-                                self_name,
-                                st,
-                                &opp_name,
-                                opp_team,
-                            )
-                        });
-                        app.replay_watch.last_dodge_candidate = Some(DodgeCandidate {
-                            opponent: opp_name.clone(),
-                            outcome: outcome_guess,
-                            approx_timestamp: app
-                                .replay_watch
-                                .last_mtime
-                                .and_then(system_time_secs),
-                        });
-                    }
-                    update_opponent_history(
-                        app,
-                        cfg,
-                        &opp_name,
-                        opp_race,
-                        history,
-                        profile_history,
-                    )?;
+                    let outcome_guess = winner.as_deref().and_then(|winner_label| {
+                        classify_short_game_outcome(
+                            winner_label,
+                            self_name,
+                            resolved.self_team,
+                            &resolved.opponent_name,
+                            resolved.opponent_team,
+                        )
+                    });
+                    app.replay_watch.last_dodge_candidate = Some(DodgeCandidate {
+                        opponent: resolved.opponent_name.clone(),
+                        outcome: outcome_guess,
+                        approx_timestamp: app.replay_watch.last_mtime.and_then(system_time_secs),
+                    });
                 }
+                update_opponent_history(
+                    app,
+                    cfg,
+                    &resolved.opponent_name,
+                    resolved.opponent_race,
+                    history,
+                    profile_history,
+                )?;
             }
         }
         app.replay_watch.last_processed_mtime = app.replay_watch.last_mtime;
         Ok(())
+    }
+
+    fn load_latest_overview(
+        cfg: &Config,
+    ) -> Result<
+        Option<(
+            Option<String>,
+            Vec<(u8, Option<String>, String)>,
+            Option<u32>,
+        )>,
+        ReplayError,
+    > {
+        let text = match run_screp_overview(cfg, &cfg.last_replay_path) {
+            Ok(text) => text,
+            Err(err) => {
+                tracing::error!(error = %err, "failed to run screp on last replay");
+                return Ok(None);
+            }
+        };
+
+        let parsed = parse_screp_overview(&text);
+        let duration = parse_screp_duration_seconds(&text);
+        Ok(Some((parsed.0, parsed.1, duration)))
+    }
+
+    struct ResolvedOpponent {
+        opponent_name: String,
+        opponent_race: Option<String>,
+        opponent_team: u8,
+        self_team: u8,
+    }
+
+    fn resolve_opponent(
+        players: &[(u8, Option<String>, String)],
+        self_name: &str,
+    ) -> Option<ResolvedOpponent> {
+        let self_team = players
+            .iter()
+            .find(|(_, _, name)| name.eq_ignore_ascii_case(self_name))?
+            .0;
+
+        let (team, race, name) = players
+            .iter()
+            .find(|(team, _, _)| *team != self_team && *team != 0)?;
+
+        Some(ResolvedOpponent {
+            opponent_name: name.clone(),
+            opponent_race: race.clone(),
+            opponent_team: *team,
+            self_team,
+        })
     }
 
     fn update_opponent_history(

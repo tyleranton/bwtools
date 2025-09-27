@@ -9,6 +9,10 @@ pub enum Intent {
     ShowReplays,
     ShowPlayers,
     BeginSearch { name: String, gateway: u16 },
+    AdjustDebugScroll { delta: i32 },
+    SetDebugScroll { value: i32 },
+    AdjustPlayerScroll { delta: i32, max: u16 },
+    SetPlayerScroll { value: u16 },
 }
 
 impl Intent {
@@ -55,6 +59,34 @@ impl Intent {
             }
             Intent::BeginSearch { name, gateway } => {
                 app.begin_search(name, gateway);
+            }
+            Intent::AdjustDebugScroll { delta } => {
+                if app.view == View::Debug {
+                    let current = app.debug.scroll as i32;
+                    let next = (current + delta).max(0) as u16;
+                    app.debug.scroll = next;
+                }
+            }
+            Intent::SetDebugScroll { value } => {
+                if app.view == View::Debug {
+                    if value == i32::MAX {
+                        app.debug.scroll = u16::MAX;
+                    } else {
+                        app.debug.scroll = value.max(0) as u16;
+                    }
+                }
+            }
+            Intent::AdjustPlayerScroll { delta, max } => {
+                if app.view == View::Players {
+                    let current = app.players.scroll as i32;
+                    let next = (current + delta).clamp(0, max as i32) as u16;
+                    app.players.scroll = next;
+                }
+            }
+            Intent::SetPlayerScroll { value } => {
+                if app.view == View::Players {
+                    app.players.scroll = value;
+                }
             }
         }
     }
