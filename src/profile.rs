@@ -30,7 +30,11 @@ impl ProfileService {
         cfg: &Config,
         mut profile_history: Option<&mut ProfileHistoryService>,
     ) -> Result<(), ProfileError> {
-        let (api, name, gw) = match (&app.api, &app.self_profile_name, app.self_gateway) {
+        let (api, name, gw) = match (
+            &app.detection.api,
+            &app.self_profile.name,
+            app.self_profile.gateway,
+        ) {
             (Some(api), Some(name), Some(gw)) => (api, name.clone(), gw),
             _ => return Ok(()),
         };
@@ -49,29 +53,28 @@ impl ProfileService {
                 p.private
             ));
         }
-        app.last_profile_text = Some(out);
-        app.self_profile_rating = api.compute_rating_for_name(&info, &name);
+        app.status.last_profile_text = Some(out);
+        app.self_profile.rating = api.compute_rating_for_name(&info, &name);
 
-        app.own_profiles = profiles.iter().map(|p| p.toon.clone()).collect();
+        app.self_profile.own_profiles = profiles.iter().map(|p| p.toon.clone()).collect();
         if let Ok(profile) = api.get_scr_profile(&name, gw) {
             let history_key = ProfileHistoryKey::new(&name, gw);
-            if let Some(history) = profile_history.as_deref_mut() {
-                if !history.has_matches(&history_key) {
-                    if let Err(err) = seed_profile_history(api, cfg, &profile, &name, gw, history) {
-                        tracing::warn!(error = %err, "failed to seed profile history");
-                    }
-                }
+            if let Some(history) = profile_history.as_deref_mut()
+                && !history.has_matches(&history_key)
+                && let Err(err) = seed_profile_history(api, cfg, &profile, &name, gw, history)
+            {
+                tracing::warn!(error = %err, "failed to seed profile history");
             }
 
             let (mr, lines, _results, self_dodged, opp_dodged) =
                 api.profile_stats_last100(&profile, &name, profile_history, Some(&history_key));
-            app.self_main_race = mr;
-            app.self_matchups = lines;
-            app.self_dodged = self_dodged;
-            app.opponent_dodged = opp_dodged;
+            app.self_profile.main_race = mr;
+            app.self_profile.matchups = lines;
+            app.self_profile.self_dodged = self_dodged;
+            app.self_profile.opponent_dodged = opp_dodged;
         }
-        app.last_rating_poll = Some(std::time::Instant::now());
-        app.profile_fetched = true;
+        app.self_profile.last_rating_poll = Some(std::time::Instant::now());
+        app.self_profile.profile_fetched = true;
         OverlayService::write_rating(cfg, app)?;
         Ok(())
     }
@@ -81,39 +84,43 @@ impl ProfileService {
         cfg: &Config,
         mut profile_history: Option<&mut ProfileHistoryService>,
     ) -> Result<(), ProfileError> {
-        if app.screp_available {
+        if app.detection.screp_available {
             return Ok(());
         }
         let due = app
+            .self_profile
             .last_rating_poll
             .is_none_or(|t| t.elapsed() >= cfg.rating_poll_interval);
         if !due {
             return Ok(());
         }
-        let (api, name, gw) = match (&app.api, &app.self_profile_name, app.self_gateway) {
+        let (api, name, gw) = match (
+            &app.detection.api,
+            &app.self_profile.name,
+            app.self_profile.gateway,
+        ) {
             (Some(api), Some(name), Some(gw)) => (api, name.clone(), gw),
             _ => return Ok(()),
         };
 
         let info = api.get_toon_info(&name, gw).map_err(ProfileError::Api)?;
-        app.self_profile_rating = api.compute_rating_for_name(&info, &name);
-        app.last_rating_poll = Some(std::time::Instant::now());
+        app.self_profile.rating = api.compute_rating_for_name(&info, &name);
+        app.self_profile.last_rating_poll = Some(std::time::Instant::now());
         if let Ok(profile) = api.get_scr_profile(&name, gw) {
             let history_key = ProfileHistoryKey::new(&name, gw);
-            if let Some(history) = profile_history.as_deref_mut() {
-                if !history.has_matches(&history_key) {
-                    if let Err(err) = seed_profile_history(api, cfg, &profile, &name, gw, history) {
-                        tracing::warn!(error = %err, "failed to seed profile history");
-                    }
-                }
+            if let Some(history) = profile_history.as_deref_mut()
+                && !history.has_matches(&history_key)
+                && let Err(err) = seed_profile_history(api, cfg, &profile, &name, gw, history)
+            {
+                tracing::warn!(error = %err, "failed to seed profile history");
             }
 
             let (mr, lines, _results, self_dodged, opp_dodged) =
                 api.profile_stats_last100(&profile, &name, profile_history, Some(&history_key));
-            app.self_main_race = mr;
-            app.self_matchups = lines;
-            app.self_dodged = self_dodged;
-            app.opponent_dodged = opp_dodged;
+            app.self_profile.main_race = mr;
+            app.self_profile.matchups = lines;
+            app.self_profile.self_dodged = self_dodged;
+            app.self_profile.opponent_dodged = opp_dodged;
         }
         OverlayService::write_rating(cfg, app)?;
         Ok(())

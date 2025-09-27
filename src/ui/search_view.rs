@@ -90,11 +90,12 @@ pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
 
     let mut prof_lines: Vec<Line> = Vec::new();
     let is_self = app
-        .self_profile_name
+        .self_profile
+        .name
         .as_ref()
         .map(|n| n.eq_ignore_ascii_case(&app.search.name))
         .unwrap_or(false)
-        && app.self_gateway == Some(app.search.gateway);
+        && app.self_profile.gateway == Some(app.search.gateway);
     if is_self {
         prof_lines.push(Line::from(Span::styled(
             "Self profile — see Main panel.",

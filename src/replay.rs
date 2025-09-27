@@ -33,28 +33,33 @@ impl ReplayService {
 }
 
 fn handle_rating_retry(app: &mut App, cfg: &Config) -> Result<(), ReplayError> {
-    if app.rating_retry_retries == 0 {
+    let retry = &mut app.self_profile.rating_retry;
+    if retry.retries == 0 {
         return Ok(());
     }
-    if let Some(next_at) = app.rating_retry_next_at {
+    if let Some(next_at) = retry.next_at {
         if next_at > std::time::Instant::now() {
             return Ok(());
         }
     }
-    if let (Some(api), Some(name), Some(gw)) = (&app.api, &app.self_profile_name, app.self_gateway)
-    {
-        match api.get_toon_info(name, gw) {
+
+    if let (Some(api), Some(name), Some(gw)) = (
+        app.detection.api.as_ref(),
+        app.self_profile.name.clone(),
+        app.self_profile.gateway,
+    ) {
+        match api.get_toon_info(&name, gw) {
             Ok(info) => {
-                let new = api.compute_rating_for_name(&info, name);
-                if new != app.rating_retry_baseline {
-                    app.self_profile_rating = new;
-                    app.rating_retry_retries = 0;
-                    app.rating_retry_next_at = None;
-                    app.rating_retry_baseline = None;
+                let new = api.compute_rating_for_name(&info, &name);
+                if new != retry.baseline {
+                    app.self_profile.rating = new;
+                    retry.retries = 0;
+                    retry.next_at = None;
+                    retry.baseline = None;
                     OverlayService::write_rating(cfg, app)?;
                 } else {
-                    app.rating_retry_retries = app.rating_retry_retries.saturating_sub(1);
-                    app.rating_retry_next_at = Some(
+                    retry.retries = retry.retries.saturating_sub(1);
+                    retry.next_at = Some(
                         std::time::Instant::now()
                             .checked_add(cfg.rating_retry_interval)
                             .unwrap_or_else(std::time::Instant::now),
@@ -62,8 +67,8 @@ fn handle_rating_retry(app: &mut App, cfg: &Config) -> Result<(), ReplayError> {
                 }
             }
             Err(_) => {
-                app.rating_retry_retries = app.rating_retry_retries.saturating_sub(1);
-                app.rating_retry_next_at = Some(
+                retry.retries = retry.retries.saturating_sub(1);
+                retry.next_at = Some(
                     std::time::Instant::now()
                         .checked_add(cfg.rating_retry_interval)
                         .unwrap_or_else(std::time::Instant::now),
@@ -71,9 +76,9 @@ fn handle_rating_retry(app: &mut App, cfg: &Config) -> Result<(), ReplayError> {
             }
         }
     } else {
-        app.rating_retry_retries = 0;
-        app.rating_retry_next_at = None;
-        app.rating_retry_baseline = None;
+        retry.retries = 0;
+        retry.next_at = None;
+        retry.baseline = None;
     }
     Ok(())
 }
@@ -84,26 +89,29 @@ fn handle_screp_watch(
     history: Option<&HistoryService<FileHistorySource>>,
     profile_history: &mut ProfileHistoryService,
 ) -> Result<(), ReplayError> {
-    if !app.screp_available {
+    if !app.detection.screp_available {
         return Ok(());
     }
 
     if let Ok(meta) = std::fs::metadata(&cfg.last_replay_path) {
         if let Ok(mtime) = meta.modified() {
-            let changed = app.last_replay_processed_mtime.is_none_or(|p| mtime > p);
+            let changed = app
+                .replay_watch
+                .last_processed_mtime
+                .is_none_or(|p| mtime > p);
             if changed {
-                app.last_replay_mtime = Some(mtime);
-                if app.replay_changed_at.is_none() {
-                    app.replay_changed_at = Some(std::time::Instant::now());
+                app.replay_watch.last_mtime = Some(mtime);
+                if app.replay_watch.changed_at.is_none() {
+                    app.replay_watch.changed_at = Some(std::time::Instant::now());
                 }
             }
         }
     }
 
-    if let Some(start) = app.replay_changed_at {
+    if let Some(start) = app.replay_watch.changed_at {
         if start.elapsed() >= cfg.replay_settle {
             process_last_replay(app, cfg, history, profile_history)?;
-            app.replay_changed_at = None;
+            app.replay_watch.changed_at = None;
         }
     }
 
@@ -125,8 +133,8 @@ fn process_last_replay(
             let text = String::from_utf8_lossy(&out.stdout).to_string();
             let (winner, players) = parse_screp_overview(&text);
             let duration = parse_screp_duration_seconds(&text);
-            app.last_dodge_candidate = None;
-            if let Some(self_name) = &app.self_profile_name {
+            app.replay_watch.last_dodge_candidate = None;
+            if let Some(self_name) = &app.self_profile.name {
                 let mut self_team: Option<u8> = None;
                 for (team, _race, name) in players.iter() {
                     if name.eq_ignore_ascii_case(self_name) {
@@ -134,10 +142,10 @@ fn process_last_replay(
                     }
                 }
                 if let Some(st) = self_team {
-                    if let Some((opp_name, opp_race)) =
+                    if let Some((opp_team, opp_name, opp_race)) =
                         players.iter().find_map(|(team, race, name)| {
-                            if *team != st {
-                                Some((name.clone(), race.clone()))
+                            if *team != st && *team != 0 {
+                                Some((*team, name.clone(), race.clone()))
                             } else {
                                 None
                             }
@@ -145,24 +153,24 @@ fn process_last_replay(
                     {
                         if let Some(duration_secs) = duration
                             && duration_secs < 60
-                            && let Some(winner_name) = winner.as_ref()
                         {
-                            let outcome = if winner_name.eq_ignore_ascii_case(self_name) {
-                                Some(MatchOutcome::OpponentDodged)
-                            } else if winner_name.eq_ignore_ascii_case(&opp_name) {
-                                Some(MatchOutcome::SelfDodged)
-                            } else {
-                                None
-                            };
-                            if let Some(outcome) = outcome {
-                                app.last_dodge_candidate = Some(DodgeCandidate {
-                                    opponent: opp_name.clone(),
-                                    outcome,
-                                    approx_timestamp: app
-                                        .last_replay_mtime
-                                        .and_then(system_time_secs),
-                                });
-                            }
+                            let outcome_guess = winner.as_deref().and_then(|winner_label| {
+                                classify_short_game_outcome(
+                                    winner_label,
+                                    self_name,
+                                    st,
+                                    &opp_name,
+                                    opp_team,
+                                )
+                            });
+                            app.replay_watch.last_dodge_candidate = Some(DodgeCandidate {
+                                opponent: opp_name.clone(),
+                                outcome: outcome_guess,
+                                approx_timestamp: app
+                                    .replay_watch
+                                    .last_mtime
+                                    .and_then(system_time_secs),
+                            });
                         }
                         update_opponent_history(
                             app,
@@ -175,7 +183,7 @@ fn process_last_replay(
                     }
                 }
             }
-            app.last_replay_processed_mtime = app.last_replay_mtime;
+            app.replay_watch.last_processed_mtime = app.replay_watch.last_mtime;
         }
         Ok(_) => {
             tracing::error!("screp failed to parse LastReplay");
@@ -196,12 +204,13 @@ fn update_opponent_history(
     profile_history: &mut ProfileHistoryService,
 ) -> Result<(), ReplayError> {
     let key = opp_name.to_ascii_lowercase();
-    let gateway = app.gateway.unwrap_or(0);
-    let last_replay_ts = app.last_replay_mtime.and_then(system_time_secs);
+    let gateway = app.opponent.gateway.unwrap_or(0);
+    let last_replay_ts = app.replay_watch.last_mtime.and_then(system_time_secs);
 
     {
         let entry = app
-            .opponent_history
+            .opponent
+            .history
             .entry(key.clone())
             .or_insert_with(|| OpponentRecord {
                 name: opp_name.to_string(),
@@ -237,16 +246,16 @@ fn update_opponent_history(
     let mut matchup_update: Option<Vec<String>> = None;
     let mut dodge_counts_update: Option<(u32, u32)> = None;
     let mut clear_dodge_candidate = false;
-    let dodge_candidate = app.last_dodge_candidate.clone();
+    let dodge_candidate = app.replay_watch.last_dodge_candidate.clone();
 
     if let (Some(api), Some(name), Some(gw)) = (
-        app.api.as_ref(),
-        app.self_profile_name.clone(),
-        app.self_gateway,
+        app.detection.api.as_ref(),
+        app.self_profile.name.clone(),
+        app.self_profile.gateway,
     ) {
         match api.get_toon_info(&name, gw) {
             Ok(info) => {
-                let old = app.self_profile_rating;
+                let old = app.self_profile.rating;
                 let new = api.compute_rating_for_name(&info, &name);
                 new_profile_rating = Some(new);
                 refresh_rating_overlay = true;
@@ -258,9 +267,13 @@ fn update_opponent_history(
                         let history_key = ProfileHistoryKey::new(&name, gw);
 
                         if let Some(candidate) = dodge_candidate.as_ref() {
-                            if let Some(stored) = build_dodged_match(&profile, &name, candidate) {
+                            if let Some((stored, _resolved_outcome)) =
+                                build_dodged_match(&profile, &name, candidate)
+                            {
                                 match profile_history.upsert_match(&history_key, stored) {
-                                    Ok(()) => clear_dodge_candidate = true,
+                                    Ok(()) => {
+                                        clear_dodge_candidate = true;
+                                    }
                                     Err(err) => tracing::error!(
                                         error = %err,
                                         "failed to record dodged match"
@@ -293,7 +306,7 @@ fn update_opponent_history(
             }
             Err(_) => {
                 rating_retry_update = Some(RatingRetryUpdate::Schedule {
-                    baseline: app.self_profile_rating,
+                    baseline: app.self_profile.rating,
                 });
             }
         }
@@ -304,20 +317,20 @@ fn update_opponent_history(
     }
 
     if let Some(new_rating) = new_profile_rating {
-        app.self_profile_rating = new_rating;
+        app.self_profile.rating = new_rating;
     }
 
     if let Some(update) = rating_retry_update {
         match update {
             RatingRetryUpdate::Reset => {
-                app.rating_retry_retries = 0;
-                app.rating_retry_next_at = None;
-                app.rating_retry_baseline = None;
+                app.self_profile.rating_retry.retries = 0;
+                app.self_profile.rating_retry.next_at = None;
+                app.self_profile.rating_retry.baseline = None;
             }
             RatingRetryUpdate::Schedule { baseline } => {
-                app.rating_retry_baseline = baseline;
-                app.rating_retry_retries = cfg.rating_retry_max;
-                app.rating_retry_next_at = Some(
+                app.self_profile.rating_retry.baseline = baseline;
+                app.self_profile.rating_retry.retries = cfg.rating_retry_max;
+                app.self_profile.rating_retry.next_at = Some(
                     std::time::Instant::now()
                         .checked_add(cfg.rating_retry_interval)
                         .unwrap_or_else(std::time::Instant::now),
@@ -327,24 +340,24 @@ fn update_opponent_history(
     }
 
     if let Some(mr) = main_race_update {
-        app.self_main_race = mr;
+        app.self_profile.main_race = mr;
     }
 
     if let Some(lines) = matchup_update {
-        app.self_matchups = lines;
+        app.self_profile.matchups = lines;
     }
 
     if let Some((self_dodged, opp_dodged)) = dodge_counts_update {
-        app.self_dodged = self_dodged;
-        app.opponent_dodged = opp_dodged;
+        app.self_profile.self_dodged = self_dodged;
+        app.self_profile.opponent_dodged = opp_dodged;
     }
 
     if clear_dodge_candidate {
-        app.last_dodge_candidate = None;
+        app.replay_watch.last_dodge_candidate = None;
     }
 
     if let Some((wins, losses, ts, race)) = history_update {
-        if let Some(entry) = app.opponent_history.get_mut(&key) {
+        if let Some(entry) = app.opponent.history.get_mut(&key) {
             entry.wins = wins;
             entry.losses = losses;
             if let Some(latest) = ts {
@@ -363,7 +376,7 @@ fn update_opponent_history(
 
     if let Some(service) = history {
         service
-            .save(&app.opponent_history)
+            .save(&app.opponent.history)
             .map_err(ReplayError::History)?;
     }
 
@@ -374,14 +387,7 @@ fn build_dodged_match(
     profile: &bw_web_api_rs::models::aurora_profile::ScrProfile,
     self_name: &str,
     candidate: &DodgeCandidate,
-) -> Option<StoredMatch> {
-    if !matches!(
-        candidate.outcome,
-        MatchOutcome::SelfDodged | MatchOutcome::OpponentDodged
-    ) {
-        return None;
-    }
-
+) -> Option<(StoredMatch, MatchOutcome)> {
     for g in profile.game_results.iter() {
         let actual: Vec<&bw_web_api_rs::models::common::Player> = g
             .players
@@ -413,14 +419,29 @@ fn build_dodged_match(
             }
         }
 
-        let expected = match candidate.outcome {
-            MatchOutcome::OpponentDodged => "win",
-            MatchOutcome::SelfDodged => "loss",
-            _ => unreachable!(),
+        let resolved_outcome = match candidate.outcome {
+            Some(outcome @ MatchOutcome::OpponentDodged) => {
+                if !actual[mi].result.eq_ignore_ascii_case("win") {
+                    continue;
+                }
+                outcome
+            }
+            Some(outcome @ MatchOutcome::SelfDodged) => {
+                if !actual[mi].result.eq_ignore_ascii_case("loss") {
+                    continue;
+                }
+                outcome
+            }
+            _ => {
+                if actual[mi].result.eq_ignore_ascii_case("win") {
+                    MatchOutcome::OpponentDodged
+                } else if actual[mi].result.eq_ignore_ascii_case("loss") {
+                    MatchOutcome::SelfDodged
+                } else {
+                    continue;
+                }
+            }
         };
-        if !actual[mi].result.eq_ignore_ascii_case(expected) {
-            continue;
-        }
 
         let opponent_name = if actual[oi].toon.trim().is_empty() {
             "Unknown".to_string()
@@ -428,13 +449,16 @@ fn build_dodged_match(
             actual[oi].toon.clone()
         };
 
-        return Some(StoredMatch {
-            timestamp: ts,
-            opponent: opponent_name,
-            opponent_race: actual[oi].attributes.race.clone(),
-            main_race: actual[mi].attributes.race.clone(),
-            result: candidate.outcome,
-        });
+        return Some((
+            StoredMatch {
+                timestamp: ts,
+                opponent: opponent_name,
+                opponent_race: actual[oi].attributes.race.clone(),
+                main_race: actual[mi].attributes.race.clone(),
+                result: resolved_outcome,
+            },
+            resolved_outcome,
+        ));
     }
 
     None
@@ -515,4 +539,55 @@ pub fn system_time_secs(st: SystemTime) -> Option<u64> {
     st.duration_since(std::time::UNIX_EPOCH)
         .ok()
         .map(|d| d.as_secs())
+}
+
+fn classify_short_game_outcome(
+    winner_label: &str,
+    self_name: &str,
+    self_team: u8,
+    opponent_name: &str,
+    opponent_team: u8,
+) -> Option<MatchOutcome> {
+    let trimmed = winner_label.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let winner_lower = trimmed.to_ascii_lowercase();
+    let self_lower = self_name.trim().to_ascii_lowercase();
+    let opp_lower = opponent_name.trim().to_ascii_lowercase();
+
+    if !self_lower.is_empty() && winner_lower.contains(&self_lower) {
+        return Some(MatchOutcome::OpponentDodged);
+    }
+    if !opp_lower.is_empty() && winner_lower.contains(&opp_lower) {
+        return Some(MatchOutcome::SelfDodged);
+    }
+
+    if let Some(team) = winner_team_number(&winner_lower) {
+        if team == self_team {
+            return Some(MatchOutcome::OpponentDodged);
+        }
+        if team == opponent_team {
+            return Some(MatchOutcome::SelfDodged);
+        }
+    }
+
+    None
+}
+
+fn winner_team_number(label: &str) -> Option<u8> {
+    let mut lower = label.to_ascii_lowercase();
+    if let Some(idx) = lower.find("team") {
+        lower.drain(..idx + 4);
+        let digits: String = lower
+            .chars()
+            .skip_while(|c| !c.is_ascii_digit())
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+        if !digits.is_empty() {
+            return digits.parse().ok();
+        }
+    }
+    None
 }

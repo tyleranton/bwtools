@@ -16,7 +16,7 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                     _ => crate::app::View::Debug,
                 };
                 if app.view == View::Debug {
-                    app.debug_scroll = 0;
+                    app.debug.scroll = 0;
                 }
             }
             KeyCode::Char('s') => {
@@ -30,12 +30,12 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
             KeyCode::Char('r') => {
                 app.view = crate::app::View::Replays;
                 if app.replay.toon_input.is_empty() {
-                    if let Some(name) = &app.self_profile_name {
+                    if let Some(name) = &app.self_profile.name {
                         app.replay.toon_input = name.clone();
                         app.replay.toon_cursor = app.replay.toon_input.chars().count();
                     }
                 }
-                if let Some(gw) = app.self_gateway {
+                if let Some(gw) = app.self_profile.gateway {
                     app.replay.input_gateway = gw;
                 }
                 app.replay.focus = crate::app::ReplayFocus::Toon;
@@ -66,28 +66,31 @@ pub fn handle_mouse_event(app: &mut App, me: MouseEvent) {
         let y = me.row;
         match app.view {
             crate::app::View::Main => {
-                if let Some(rect) = app.status_opponent_rect {
+                if let Some(rect) = app.layout.status_opponent_rect {
                     if x >= rect.x
                         && x < rect.x + rect.width
                         && y >= rect.y
                         && y < rect.y + rect.height
                     {
-                        if let (Some(name), Some(gw)) = (&app.profile_name, app.gateway) {
+                        if let (Some(name), Some(gw)) = (&app.opponent.name, app.opponent.gateway) {
                             app.begin_search(name.clone(), gw);
                         }
                     }
                 }
-                if let Some(rect) = app.main_opponent_toons_rect {
+                if let Some(rect) = app.layout.main_opponent_toons_rect {
                     if x >= rect.x && y >= rect.y && y < rect.y + rect.height {
                         let idx = (y - rect.y) as usize;
                         if idx == 0 {
-                            if let (Some(name), Some(gw)) = (&app.profile_name, app.gateway) {
+                            if let (Some(name), Some(gw)) =
+                                (&app.opponent.name, app.opponent.gateway)
+                            {
                                 let rating = app
-                                    .opponent_toons_data
+                                    .opponent
+                                    .toons_data
                                     .iter()
                                     .find(|(t, _, _)| t.eq_ignore_ascii_case(name))
                                     .map(|(_, _, r)| *r);
-                                let race_opt = app.opponent_race.clone();
+                                let race_opt = app.opponent.race.clone();
                                 let mut parts: Vec<String> =
                                     vec![name.clone(), crate::api::gateway_label(gw).to_string()];
                                 if let Some(race) = race_opt {
@@ -104,10 +107,12 @@ pub fn handle_mouse_event(app: &mut App, me: MouseEvent) {
                             }
                         } else {
                             let others: Vec<(String, u16, u32)> = app
-                                .opponent_toons_data
+                                .opponent
+                                .toons_data
                                 .iter()
                                 .filter(|(t, _, _)| {
-                                    app.profile_name
+                                    app.opponent
+                                        .name
                                         .as_ref()
                                         .map(|n| !t.eq_ignore_ascii_case(n))
                                         .unwrap_or(true)

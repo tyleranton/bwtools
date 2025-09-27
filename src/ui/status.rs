@@ -6,7 +6,7 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 use crate::app::App;
 
 pub fn render_status(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app: &mut App) {
-    let (status_label, status_style, status_detail) = match app.port {
+    let (status_label, status_style, status_detail) = match app.detection.port {
         Some(_) => (
             "Connected".to_string(),
             Style::default()
@@ -20,7 +20,7 @@ pub fn render_status(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, ap
             "Launch StarCraft: Remastered to detect the API port.".to_string(),
         ),
     };
-    let self_line_opt = match (&app.self_profile_name, app.self_gateway) {
+    let self_line_opt = match (&app.self_profile.name, app.self_profile.gateway) {
         (Some(name), Some(gw)) => Some(Line::from(Span::styled(
             format!("Self: {} • {}", name, crate::api::gateway_label(gw)),
             Style::default().fg(Color::Yellow),
@@ -49,6 +49,6 @@ pub fn render_status(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, ap
     let status = Paragraph::new(status_lines)
         .alignment(Alignment::Left)
         .block(status_block);
-    app.status_opponent_rect = None;
+    app.layout.status_opponent_rect = None;
     frame.render_widget(status, area);
 }

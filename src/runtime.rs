@@ -36,10 +36,7 @@ pub struct AppRuntime {
 impl AppRuntime {
     pub fn new(cfg: Config) -> Result<Self, AppError> {
         let terminal = setup_terminal().map_err(AppError::TerminalSetup)?;
-        let app = App {
-            debug_window_secs: cfg.debug_window_secs,
-            ..Default::default()
-        };
+        let app = App::new(cfg.debug_window_secs);
 
         let detection = DetectionEngine::new(cfg.cache_dir.clone(), cfg.refresh_interval);
 
@@ -97,7 +94,7 @@ impl AppRuntime {
                 }
 
                 if self.app.is_ready()
-                    && !self.app.profile_fetched
+                    && !self.app.self_profile.profile_fetched
                     && let Err(err) = ProfileService::fetch_self_profile(
                         &mut self.app,
                         &self.cfg,
@@ -105,7 +102,7 @@ impl AppRuntime {
                     )
                 {
                     tracing::error!(error = %err, "fetch self profile failed");
-                    self.app.last_profile_text = some_text("Profile error", &err);
+                    self.app.status.last_profile_text = some_text("Profile error", &err);
                 }
                 if self.app.search.in_progress
                     && let Err(err) = SearchService::run(&mut self.app)
@@ -120,7 +117,7 @@ impl AppRuntime {
                     )
                 {
                     tracing::error!(error = %err, "poll self rating failed");
-                    self.app.last_profile_text = some_text("Profile error", &err);
+                    self.app.status.last_profile_text = some_text("Profile error", &err);
                 }
 
                 if let Err(err) = self.handle_pending_replay_download() {
@@ -135,12 +132,12 @@ impl AppRuntime {
                     &mut self.profile_history,
                 ) {
                     tracing::error!(error = %err, "replay service tick failed");
-                    self.app.last_profile_text = some_text("Replay error", &err);
+                    self.app.status.last_profile_text = some_text("Replay error", &err);
                 }
 
                 if let Err(err) = OverlayService::write_opponent(&self.cfg, &mut self.app) {
                     tracing::error!(error = %err, "failed to update opponent overlay");
-                    self.app.last_profile_text = some_text("Overlay error", &err);
+                    self.app.status.last_profile_text = some_text("Overlay error", &err);
                 }
 
                 self.last_tick = Instant::now();
@@ -158,19 +155,19 @@ impl AppRuntime {
         let storage = ReplayStorage::new(self.cfg.replay_library_root.clone());
         if let Err(err) = storage.ensure_base_dirs() {
             tracing::error!(error = %err, "failed to ensure replay directories");
-            self.app.last_profile_text = some_text("Replay dir error", &err);
+            self.app.status.last_profile_text = some_text("Replay dir error", &err);
         }
-        self.app.replay_storage = Some(storage);
+        self.app.replay_watch.storage = Some(storage);
 
         let history = HistoryService::new(FileHistorySource::new(
             self.cfg.opponent_history_path.clone(),
         ));
         match history.load() {
-            Ok(hist) => self.app.opponent_history = hist,
+            Ok(hist) => self.app.opponent.history = hist,
             Err(err) => {
                 tracing::error!(error = %err, "failed to load opponent history");
-                self.app.opponent_history = Default::default();
-                self.app.last_profile_text = some_text("History load error", &err);
+                self.app.opponent.history = Default::default();
+                self.app.status.last_profile_text = some_text("History load error", &err);
             }
         }
         self.history = Some(history);
@@ -184,11 +181,11 @@ impl AppRuntime {
             Err(err) => tracing::error!(error = %err, "failed to load player list"),
         }
 
-        self.app.screp_available =
+        self.app.detection.screp_available =
             which(&self.cfg.screp_cmd).is_ok() && Path::new(&self.cfg.last_replay_path).exists();
         if let Ok(meta) = std::fs::metadata(&self.cfg.last_replay_path) {
-            self.app.last_replay_mtime = meta.modified().ok();
-            self.app.last_replay_processed_mtime = self.app.last_replay_mtime;
+            self.app.replay_watch.last_mtime = meta.modified().ok();
+            self.app.replay_watch.last_processed_mtime = self.app.replay_watch.last_mtime;
         }
 
         Ok(())
@@ -210,8 +207,9 @@ impl AppRuntime {
         }
         let port = self
             .app
+            .detection
             .port
-            .or(self.app.last_port_used)
+            .or(self.app.detection.last_port_used)
             .unwrap_or_default();
         if port == 0 {
             self.app.replay.last_error = Some("No API port detected".to_string());
@@ -300,9 +298,9 @@ impl DetectionEngine {
                 .map_err(|err| AppError::runtime("detection tick", err))?;
 
             if app.view == View::Debug {
-                match reader.recent_keys(app.debug_window_secs, 20) {
+                match reader.recent_keys(app.debug.window_secs, 20) {
                     Ok(list) => {
-                        app.debug_recent = list
+                        app.debug.recent = list
                             .into_iter()
                             .map(|(k, age)| format!("{age:>2}s • {}", k))
                             .collect();

@@ -222,7 +222,7 @@ impl ApiHandle {
         &self,
         profile: &ScrProfile,
         main_toon: &str,
-        mut profile_history: Option<&mut ProfileHistoryService>,
+        profile_history: Option<&mut ProfileHistoryService>,
         history_key: Option<&ProfileHistoryKey>,
     ) -> (Option<String>, Vec<String>, Vec<bool>, u32, u32) {
         let mut matches: Vec<StoredMatch> = Vec::new();
@@ -266,18 +266,17 @@ impl ApiHandle {
         }
         matches.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
 
-        let combined =
-            if let (Some(history), Some(key)) = (profile_history.as_deref_mut(), history_key) {
-                match history.merge_matches(key, matches.clone()) {
-                    Ok(merged) => merged,
-                    Err(err) => {
-                        tracing::error!(error = %err, "failed to merge profile history");
-                        matches.into_iter().take(100).collect()
-                    }
+        let combined = if let (Some(history), Some(key)) = (profile_history, history_key) {
+            match history.merge_matches(key, matches.clone()) {
+                Ok(merged) => merged,
+                Err(err) => {
+                    tracing::error!(error = %err, "failed to merge profile history");
+                    matches.into_iter().take(100).collect()
                 }
-            } else {
-                matches.into_iter().take(100).collect()
-            };
+            }
+        } else {
+            matches.into_iter().take(100).collect()
+        };
 
         let mut race_counts = std::collections::HashMap::new();
         for m in combined.iter() {

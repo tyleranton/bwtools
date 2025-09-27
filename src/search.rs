@@ -20,7 +20,7 @@ impl SearchService {
         app.search.matches_scroll = 0;
         app.search.main_race = None;
         app.search.matchups.clear();
-        if let (Some(api), true) = (&app.api, !app.search.name.trim().is_empty()) {
+        if let (Some(api), true) = (&app.detection.api, !app.search.name.trim().is_empty()) {
             let name = app.search.name.trim().to_string();
             let gw = app.search.gateway;
             match api.get_toon_info(&name, gw) {

@@ -12,7 +12,7 @@ pub fn render_debug(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app
         .split(area);
 
     let mut resp_lines: Vec<Line> = Vec::new();
-    if let Some(port_text) = &app.debug_port_text {
+    if let Some(port_text) = &app.debug.port_text {
         resp_lines.push(Line::from(Span::styled(
             port_text.clone(),
             Style::default()
@@ -21,7 +21,7 @@ pub fn render_debug(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app
         )));
         resp_lines.push(Line::from(Span::raw(String::new())));
     }
-    if let Some(txt) = &app.last_profile_text {
+    if let Some(txt) = &app.status.last_profile_text {
         for l in txt.lines() {
             resp_lines.push(Line::from(Span::raw(l.to_string())));
         }
@@ -32,7 +32,7 @@ pub fn render_debug(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app
         )));
     }
     let resp = Paragraph::new(resp_lines)
-        .scroll((app.debug_scroll, 0))
+        .scroll((app.debug.scroll, 0))
         .wrap(Wrap { trim: false })
         .alignment(ratatui::layout::Alignment::Left)
         .block(
@@ -46,7 +46,7 @@ pub fn render_debug(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app
     frame.render_widget(resp, sub[0]);
 
     let mut recent_lines: Vec<Line> = Vec::new();
-    for entry in app.debug_recent.iter().take(50) {
+    for entry in app.debug.recent.iter().take(50) {
         let lc = entry.to_ascii_lowercase();
         let style = if lc.contains("aurora-profile-by-toon") {
             Style::default().fg(Color::Cyan)
@@ -60,7 +60,7 @@ pub fn render_debug(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app
         .alignment(ratatui::layout::Alignment::Left)
         .block(
             Block::default().borders(Borders::ALL).title(Span::styled(
-                format!("Debug: Recent /web-api/ ({}s)", app.debug_window_secs),
+                format!("Debug: Recent /web-api/ ({}s)", app.debug.window_secs),
                 Style::default()
                     .fg(Color::Magenta)
                     .add_modifier(Modifier::BOLD),

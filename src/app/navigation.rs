@@ -33,14 +33,14 @@ impl App {
         match code {
             KeyCode::Up => {
                 if matches!(self.view, View::Debug) {
-                    self.debug_scroll = self.debug_scroll.saturating_sub(1);
+                    self.debug.scroll = self.debug.scroll.saturating_sub(1);
                 } else if matches!(self.view, View::Players) {
                     self.players.scroll = self.players.scroll.saturating_sub(1);
                 }
             }
             KeyCode::Down => {
                 if matches!(self.view, View::Debug) {
-                    self.debug_scroll = self.debug_scroll.saturating_add(1);
+                    self.debug.scroll = self.debug.scroll.saturating_add(1);
                 } else if matches!(self.view, View::Players) {
                     let max_scroll = self
                         .players
@@ -53,14 +53,14 @@ impl App {
             }
             KeyCode::PageUp => {
                 if matches!(self.view, View::Debug) {
-                    self.debug_scroll = self.debug_scroll.saturating_sub(10);
+                    self.debug.scroll = self.debug.scroll.saturating_sub(10);
                 } else if matches!(self.view, View::Players) {
                     self.players.scroll = self.players.scroll.saturating_sub(10);
                 }
             }
             KeyCode::PageDown => {
                 if matches!(self.view, View::Debug) {
-                    self.debug_scroll = self.debug_scroll.saturating_add(10);
+                    self.debug.scroll = self.debug.scroll.saturating_add(10);
                 } else if matches!(self.view, View::Players) {
                     let max_scroll = self
                         .players
@@ -73,14 +73,14 @@ impl App {
             }
             KeyCode::Home => {
                 if matches!(self.view, View::Debug) {
-                    self.debug_scroll = 0;
+                    self.debug.scroll = 0;
                 } else if matches!(self.view, View::Players) {
                     self.players.scroll = 0;
                 }
             }
             KeyCode::End => {
                 if matches!(self.view, View::Debug) {
-                    self.debug_scroll = u16::MAX;
+                    self.debug.scroll = u16::MAX;
                 } else if matches!(self.view, View::Players) {
                     let max_scroll = self
                         .players
@@ -93,14 +93,14 @@ impl App {
             }
             KeyCode::Char('k') => {
                 if matches!(self.view, View::Debug) {
-                    self.debug_scroll = self.debug_scroll.saturating_sub(1);
+                    self.debug.scroll = self.debug.scroll.saturating_sub(1);
                 } else if matches!(self.view, View::Players) {
                     self.players.scroll = self.players.scroll.saturating_sub(1);
                 }
             }
             KeyCode::Char('j') => {
                 if matches!(self.view, View::Debug) {
-                    self.debug_scroll = self.debug_scroll.saturating_add(1);
+                    self.debug.scroll = self.debug.scroll.saturating_add(1);
                 } else if matches!(self.view, View::Players) {
                     let max_scroll = self
                         .players

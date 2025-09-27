@@ -30,10 +30,13 @@ pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app:
         .split(stats_inner);
 
     let stats_lines = profile_stat_lines(
-        app.self_profile_rating,
-        app.self_main_race.as_deref(),
-        &app.self_matchups,
-        Some((app.self_dodged, app.opponent_dodged)),
+        app.self_profile.rating,
+        app.self_profile.main_race.as_deref(),
+        &app.self_profile.matchups,
+        Some((
+            app.self_profile.self_dodged,
+            app.self_profile.opponent_dodged,
+        )),
     );
     frame.render_widget(stats_block, stats_area);
     frame.render_widget(
@@ -63,13 +66,14 @@ pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app:
     let mut opponent_profile_lines: Vec<Line> = Vec::new();
     let mut other_toons_lines: Vec<Line> = Vec::new();
 
-    if let (Some(name), Some(gw)) = (&app.profile_name, app.gateway) {
+    if let (Some(name), Some(gw)) = (&app.opponent.name, app.opponent.gateway) {
         let rating = app
-            .opponent_toons_data
+            .opponent
+            .toons_data
             .iter()
             .find(|(t, _, _)| t.eq_ignore_ascii_case(name))
             .map(|(_, _, r)| *r);
-        let race_opt = app.opponent_race.as_deref();
+        let race_opt = app.opponent.race.as_deref();
         let header = crate::ui::display::opponent_header(
             name,
             crate::api::gateway_label(gw),
@@ -83,7 +87,7 @@ pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app:
                 .add_modifier(Modifier::BOLD),
         )));
 
-        if let Some(rec) = app.opponent_history.get(&name.to_ascii_lowercase())
+        if let Some(rec) = app.opponent.history.get(&name.to_ascii_lowercase())
             && rec.wins + rec.losses > 0
         {
             opponent_profile_lines.push(Line::from(vec![
@@ -99,8 +103,8 @@ pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app:
 
         let mut matchup_lines = profile_stat_lines(
             rating,
-            app.opponent_race.as_deref(),
-            &app.opponent_matchups,
+            app.opponent.race.as_deref(),
+            &app.opponent.matchups,
             None,
         );
         if !matchup_lines.is_empty() {
@@ -124,12 +128,14 @@ pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app:
                 .add_modifier(Modifier::BOLD),
         )));
         if app
-            .opponent_toons_data
+            .opponent
+            .toons_data
             .iter()
             .any(|(t, _, _)| !t.eq_ignore_ascii_case(name))
         {
             for (toon, gw2, r) in app
-                .opponent_toons_data
+                .opponent
+                .toons_data
                 .iter()
                 .filter(|(t, _, _)| !t.eq_ignore_ascii_case(name))
             {
@@ -144,7 +150,7 @@ pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app:
                 Style::default().fg(Color::DarkGray),
             )));
         }
-    } else if app.opponent_toons_data.is_empty() {
+    } else if app.opponent.toons_data.is_empty() {
         opponent_profile_lines.push(Line::from(Span::styled(
             "No opponent info yet.",
             Style::default().fg(Color::DarkGray),
@@ -156,7 +162,7 @@ pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app:
                 .fg(Color::DarkGray)
                 .add_modifier(Modifier::BOLD),
         )));
-        for (toon, gw2, r) in app.opponent_toons_data.iter() {
+        for (toon, gw2, r) in app.opponent.toons_data.iter() {
             other_toons_lines.push(Line::from(Span::styled(
                 crate::ui::display::toon_line(toon, crate::api::gateway_label(*gw2), *r),
                 Style::default().fg(Color::Gray),
@@ -168,7 +174,7 @@ pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app:
     frame.render_widget(opponent_profile, columns[0]);
 
     let other_toons = Paragraph::new(other_toons_lines).wrap(Wrap { trim: true });
-    app.main_opponent_toons_rect = Some(columns[1]);
+    app.layout.main_opponent_toons_rect = Some(columns[1]);
     frame.render_widget(other_toons, columns[1]);
 
     let hotkey_line = Line::from(Span::styled(

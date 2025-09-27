@@ -114,7 +114,7 @@ impl Default for ReplayState {
 #[derive(Debug, Clone)]
 pub struct DodgeCandidate {
     pub opponent: String,
-    pub outcome: MatchOutcome,
+    pub outcome: Option<MatchOutcome>,
     pub approx_timestamp: Option<u64>,
 }
 
@@ -128,63 +128,137 @@ pub struct PlayersState {
     pub missing_data: bool,
 }
 
-pub struct App {
-    pub should_quit: bool,
+#[derive(Debug, Default)]
+pub struct DebugState {
+    pub window_secs: i64,
+    pub recent: Vec<String>,
+    pub port_text: Option<String>,
+    pub scroll: u16,
+}
+
+#[derive(Default)]
+pub struct DetectionState {
     pub port: Option<u16>,
-    pub profile_name: Option<String>,
-    pub gateway: Option<u16>,
-    pub self_profile_name: Option<String>,
-    pub self_gateway: Option<u16>,
-    pub self_profile_rating: Option<u32>,
-    pub debug_recent: Vec<String>,
-    pub debug_port_text: Option<String>,
-    pub view: View,
-    pub debug_window_secs: i64,
     pub api: Option<ApiHandle>,
     pub last_port_used: Option<u16>,
+    pub screp_available: bool,
+}
+
+#[derive(Debug, Default)]
+pub struct RatingRetryState {
+    pub retries: u8,
+    pub next_at: Option<Instant>,
+    pub baseline: Option<u32>,
+}
+
+#[derive(Debug, Default)]
+pub struct SelfProfileState {
+    pub name: Option<String>,
+    pub gateway: Option<u16>,
+    pub rating: Option<u32>,
     pub profile_fetched: bool,
-    pub last_profile_text: Option<String>,
-    pub debug_scroll: u16,
-    pub opponent_toons: Vec<String>,
-    pub opponent_toons_data: Vec<(String, u16, u32)>,
-    pub last_opponent_identity: Option<(String, u16)>,
-    pub opponent_race: Option<String>,
-    pub opponent_matchups: Vec<String>,
     pub own_profiles: HashSet<String>,
     pub last_rating_poll: Option<Instant>,
-    pub rating_output_last_text: Option<String>,
-    pub opponent_history: HashMap<String, OpponentRecord>,
-    pub screp_available: bool,
-    pub last_replay_mtime: Option<std::time::SystemTime>,
-    pub last_replay_processed_mtime: Option<std::time::SystemTime>,
-    pub replay_changed_at: Option<Instant>,
-    pub opponent_output_last_text: Option<String>,
-    pub rating_retry_retries: u8,
-    pub rating_retry_next_at: Option<Instant>,
-    pub rating_retry_baseline: Option<u32>,
-    pub replay_storage: Option<ReplayStorage>,
-    pub replay: ReplayState,
-    pub search: SearchState,
-    pub status_opponent_rect: Option<Rect>,
-    pub main_opponent_toons_rect: Option<Rect>,
-    pub self_main_race: Option<String>,
-    pub self_matchups: Vec<String>,
+    pub rating_retry: RatingRetryState,
+    pub main_race: Option<String>,
+    pub matchups: Vec<String>,
     pub self_dodged: u32,
     pub opponent_dodged: u32,
-    pub players: PlayersState,
+}
+
+#[derive(Debug, Default)]
+pub struct OpponentState {
+    pub name: Option<String>,
+    pub gateway: Option<u16>,
+    pub toons: Vec<String>,
+    pub toons_data: Vec<(String, u16, u32)>,
+    pub last_identity: Option<(String, u16)>,
+    pub race: Option<String>,
+    pub matchups: Vec<String>,
+    pub history: HashMap<String, OpponentRecord>,
+}
+
+#[derive(Debug, Default)]
+pub struct OverlayState {
+    pub rating_last_text: Option<String>,
+    pub opponent_last_text: Option<String>,
+}
+
+#[derive(Default)]
+pub struct ReplayWatchState {
+    pub storage: Option<ReplayStorage>,
+    pub last_mtime: Option<std::time::SystemTime>,
+    pub last_processed_mtime: Option<std::time::SystemTime>,
+    pub changed_at: Option<Instant>,
     pub last_dodge_candidate: Option<DodgeCandidate>,
 }
 
+impl std::fmt::Debug for DetectionState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DetectionState")
+            .field("port", &self.port)
+            .field("has_api", &self.api.is_some())
+            .field("last_port_used", &self.last_port_used)
+            .field("screp_available", &self.screp_available)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for ReplayWatchState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ReplayWatchState")
+            .field("has_storage", &self.storage.is_some())
+            .field("last_mtime", &self.last_mtime)
+            .field("last_processed_mtime", &self.last_processed_mtime)
+            .field("changed_at", &self.changed_at)
+            .field("last_dodge_candidate", &self.last_dodge_candidate)
+            .finish()
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct LayoutState {
+    pub status_opponent_rect: Option<Rect>,
+    pub main_opponent_toons_rect: Option<Rect>,
+}
+
+#[derive(Debug, Default)]
+pub struct StatusState {
+    pub last_profile_text: Option<String>,
+}
+
+pub struct App {
+    pub should_quit: bool,
+    pub view: View,
+    pub debug: DebugState,
+    pub detection: DetectionState,
+    pub self_profile: SelfProfileState,
+    pub opponent: OpponentState,
+    pub overlays: OverlayState,
+    pub replay: ReplayState,
+    pub replay_watch: ReplayWatchState,
+    pub search: SearchState,
+    pub players: PlayersState,
+    pub layout: LayoutState,
+    pub status: StatusState,
+}
+
 impl App {
+    pub fn new(debug_window_secs: i64) -> Self {
+        let mut app = Self::default();
+        app.debug.window_secs = debug_window_secs;
+        app
+    }
+
     pub fn reset_opponent_state(&mut self) {
-        self.profile_name = None;
-        self.gateway = None;
-        self.opponent_toons.clear();
-        self.opponent_toons_data.clear();
-        self.last_opponent_identity = None;
-        self.opponent_race = None;
-        self.opponent_output_last_text = None;
-        self.opponent_matchups.clear();
+        self.opponent.name = None;
+        self.opponent.gateway = None;
+        self.opponent.toons.clear();
+        self.opponent.toons_data.clear();
+        self.opponent.last_identity = None;
+        self.opponent.race = None;
+        self.overlays.opponent_last_text = None;
+        self.opponent.matchups.clear();
     }
 
     pub fn begin_search(&mut self, name: String, gateway: u16) {
@@ -198,7 +272,7 @@ impl App {
     }
 
     pub fn is_ready(&self) -> bool {
-        self.port.is_some() && self.self_profile_name.is_some()
+        self.detection.port.is_some() && self.self_profile.name.is_some()
     }
 }
 
@@ -206,49 +280,21 @@ impl Default for App {
     fn default() -> Self {
         Self {
             should_quit: false,
-            port: None,
-            profile_name: None,
-            gateway: None,
-            self_profile_name: None,
-            self_gateway: None,
-            self_profile_rating: None,
-            debug_recent: Vec::new(),
-            debug_port_text: None,
             view: View::Main,
-            debug_window_secs: 10,
-            api: None,
-            last_port_used: None,
-            profile_fetched: false,
-            last_profile_text: None,
-            debug_scroll: 0,
-            opponent_toons: Vec::new(),
-            opponent_toons_data: Vec::new(),
-            last_opponent_identity: None,
-            opponent_race: None,
-            opponent_matchups: Vec::new(),
-            own_profiles: HashSet::new(),
-            last_rating_poll: None,
-            rating_output_last_text: None,
-            opponent_history: HashMap::new(),
-            screp_available: false,
-            last_replay_mtime: None,
-            last_replay_processed_mtime: None,
-            replay_changed_at: None,
-            opponent_output_last_text: None,
-            rating_retry_retries: 0,
-            rating_retry_next_at: None,
-            rating_retry_baseline: None,
-            replay_storage: None,
+            debug: DebugState {
+                window_secs: 10,
+                ..Default::default()
+            },
+            detection: DetectionState::default(),
+            self_profile: SelfProfileState::default(),
+            opponent: OpponentState::default(),
+            overlays: OverlayState::default(),
             replay: ReplayState::default(),
+            replay_watch: ReplayWatchState::default(),
             search: SearchState::default(),
-            status_opponent_rect: None,
-            main_opponent_toons_rect: None,
-            self_main_race: None,
-            self_matchups: Vec::new(),
-            self_dodged: 0,
-            opponent_dodged: 0,
             players: PlayersState::default(),
-            last_dodge_candidate: None,
+            layout: LayoutState::default(),
+            status: StatusState::default(),
         }
     }
 }

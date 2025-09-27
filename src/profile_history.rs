@@ -103,11 +103,7 @@ impl ProfileHistoryService {
         let mut changed = false;
 
         {
-            let entry = self
-                .data
-                .profiles
-                .entry(storage_key.clone())
-                .or_insert_with(Vec::new);
+            let entry = self.data.profiles.entry(storage_key.clone()).or_default();
 
             for m in incoming.into_iter() {
                 if m.timestamp == 0 {
@@ -171,11 +167,7 @@ impl ProfileHistoryService {
 impl ProfileHistoryService {
     pub fn upsert_match(&mut self, key: &ProfileHistoryKey, new_match: StoredMatch) -> Result<()> {
         let storage_key = key.storage_key();
-        let entry = self
-            .data
-            .profiles
-            .entry(storage_key.clone())
-            .or_insert_with(Vec::new);
+        let entry = self.data.profiles.entry(storage_key.clone()).or_default();
 
         let mut changed = false;
         if let Some(existing) = entry.iter_mut().find(|existing| {

@@ -34,14 +34,14 @@ impl DetectionService {
 }
 
 fn detect_port(app: &mut App, cfg: &Config, reader: &mut CacheReader) {
-    if app.port.is_some() {
+    if app.detection.port.is_some() {
         return;
     }
 
     match reader.parse_for_port(cfg.scan_window_secs) {
         Ok(Some(port)) => {
-            app.debug_port_text = Some(format!("Detected API port: {}", port));
-            app.port = Some(port);
+            app.debug.port_text = Some(format!("Detected API port: {}", port));
+            app.detection.port = Some(port);
         }
         Ok(None) => {}
         Err(err) => tracing::warn!(error = %err, "failed to read port from cache"),
@@ -49,14 +49,14 @@ fn detect_port(app: &mut App, cfg: &Config, reader: &mut CacheReader) {
 }
 
 fn detect_self_bootstrap(app: &mut App, cfg: &Config, reader: &mut CacheReader) {
-    if app.port.is_none() || app.self_profile_name.is_some() {
+    if app.detection.port.is_none() || app.self_profile.name.is_some() {
         return;
     }
 
     match reader.latest_self_profile(cfg.scan_window_secs) {
         Ok(Some((name, gw))) => {
-            app.self_profile_name = Some(name);
-            app.self_gateway = Some(gw);
+            app.self_profile.name = Some(name);
+            app.self_profile.gateway = Some(gw);
         }
         Ok(None) => {}
         Err(err) => tracing::warn!(error = %err, "failed to read self profile from cache"),
@@ -64,12 +64,12 @@ fn detect_self_bootstrap(app: &mut App, cfg: &Config, reader: &mut CacheReader) 
 }
 
 fn init_api(app: &mut App) {
-    if let Some(p) = app.port {
-        let stale = app.api.is_none() || app.last_port_used != Some(p);
+    if let Some(p) = app.detection.port {
+        let stale = app.detection.api.is_none() || app.detection.last_port_used != Some(p);
         if stale {
             let base_url = format!("http://127.0.0.1:{p}");
-            app.api = crate::api::ApiHandle::new(base_url).ok();
-            app.last_port_used = Some(p);
+            app.detection.api = crate::api::ApiHandle::new(base_url).ok();
+            app.detection.last_port_used = Some(p);
         }
     }
 }
@@ -85,9 +85,9 @@ fn detect_self_switch(
 
     match reader.latest_mmgameloading_profile(cfg.scan_window_secs) {
         Ok(Some((mm_name, mm_gw))) => {
-            let is_own = app.own_profiles.contains(&mm_name);
-            let current_name = app.self_profile_name.as_deref().unwrap_or("<none>");
-            let current_gateway = app.self_gateway.unwrap_or(0);
+            let is_own = app.self_profile.own_profiles.contains(&mm_name);
+            let current_name = app.self_profile.name.as_deref().unwrap_or("<none>");
+            let current_gateway = app.self_profile.gateway.unwrap_or(0);
             tracing::debug!(
                 mm_name = %mm_name,
                 mm_gateway = mm_gw,
@@ -96,15 +96,15 @@ fn detect_self_switch(
                 is_known_own = is_own,
                 "mmgameloading entry observed"
             );
-            let changed_name = app.self_profile_name.as_deref() != Some(&mm_name);
-            let changed_gw = app.self_gateway != Some(mm_gw);
+            let changed_name = app.self_profile.name.as_deref() != Some(&mm_name);
+            let changed_gw = app.self_profile.gateway != Some(mm_gw);
             if is_own && (changed_name || changed_gw) {
-                app.self_profile_name = Some(mm_name);
-                app.self_gateway = Some(mm_gw);
-                app.self_profile_rating = None;
-                app.profile_fetched = false;
-                app.last_profile_text = None;
-                app.last_rating_poll = None;
+                app.self_profile.name = Some(mm_name);
+                app.self_profile.gateway = Some(mm_gw);
+                app.self_profile.rating = None;
+                app.self_profile.profile_fetched = false;
+                app.status.last_profile_text = None;
+                app.self_profile.last_rating_poll = None;
                 app.reset_opponent_state();
                 OverlayService::write_rating(cfg, app)?;
             } else if !is_own {
@@ -137,10 +137,10 @@ fn detect_opponent(
         return Ok(());
     }
 
-    let self_name = app.self_profile_name.as_deref();
+    let self_name = app.self_profile.name.as_deref();
     match reader.latest_opponent_profile(self_name, cfg.scan_window_secs) {
         Ok(Some((name, gw))) => {
-            if app.own_profiles.contains(&name) {
+            if app.self_profile.own_profiles.contains(&name) {
                 tracing::debug!(
                     opponent = %name,
                     gateway = gw,
@@ -154,20 +154,20 @@ fn detect_opponent(
                 gateway = gw,
                 "mmgameloading opponent candidate detected"
             );
-            app.profile_name = Some(name);
-            app.gateway = Some(gw);
+            app.opponent.name = Some(name);
+            app.opponent.gateway = Some(gw);
 
             if let (Some(api), Some(opp_name), Some(opp_gw)) =
-                (&app.api, &app.profile_name, app.gateway)
+                (&app.detection.api, &app.opponent.name, app.opponent.gateway)
             {
                 let identity = (opp_name.clone(), opp_gw);
-                if app.last_opponent_identity.as_ref() == Some(&identity) {
+                if app.opponent.last_identity.as_ref() == Some(&identity) {
                     tracing::debug!(opponent = %opp_name, gateway = opp_gw, "opponent identity unchanged; skipping refresh");
                     return Ok(());
                 }
 
-                app.opponent_race = None;
-                app.opponent_matchups.clear();
+                app.opponent.race = None;
+                app.opponent.matchups.clear();
 
                 match api.opponent_toons_summary(opp_name, opp_gw) {
                     Ok(list) => {
@@ -177,8 +177,8 @@ fn detect_opponent(
                             toon_count = list.len(),
                             "opponent toons summary fetched"
                         );
-                        app.opponent_toons_data = list.clone();
-                        app.opponent_toons = list
+                        app.opponent.toons_data = list.clone();
+                        app.opponent.toons = list
                             .into_iter()
                             .map(|(toon, gw_num, rating)| {
                                 format!(
@@ -189,7 +189,7 @@ fn detect_opponent(
                                 )
                             })
                             .collect();
-                        app.last_opponent_identity = Some(identity);
+                        app.opponent.last_identity = Some(identity);
                     }
                     Err(err) => tracing::error!(error = %err, "opponent toons summary failed"),
                 }
@@ -204,8 +204,8 @@ fn detect_opponent(
                             main_race = ?mr,
                             "opponent profile fetched"
                         );
-                        app.opponent_race = mr;
-                        app.opponent_matchups = lines;
+                        app.opponent.race = mr;
+                        app.opponent.matchups = lines;
                     }
                     Err(err) => tracing::error!(error = %err, "opponent profile fetch failed"),
                 }
@@ -230,8 +230,8 @@ fn detect_opponent(
                         let rating = guid.and_then(|g| api.compute_rating_for_guid(&info, g));
 
                         let key = opp_name.to_ascii_lowercase();
-                        let is_new = !app.opponent_history.contains_key(&key);
-                        let entry = app.opponent_history.entry(key.clone()).or_insert_with(|| {
+                        let is_new = !app.opponent.history.contains_key(&key);
+                        let entry = app.opponent.history.entry(key.clone()).or_insert_with(|| {
                             OpponentRecord {
                                 name: opp_name.clone(),
                                 gateway: opp_gw,
@@ -252,7 +252,7 @@ fn detect_opponent(
                         let no_wl = entry.wins + entry.losses == 0;
                         if (is_new || no_wl)
                             && let (Some(self_name), Some(self_gw)) =
-                                (&app.self_profile_name, app.self_gateway)
+                                (&app.self_profile.name, app.self_profile.gateway)
                         {
                             match api.get_scr_profile(self_name, self_gw) {
                                 Ok(profile) => {
@@ -279,7 +279,7 @@ fn detect_opponent(
 
                         if let Some(service) = history {
                             service
-                                .save(&app.opponent_history)
+                                .save(&app.opponent.history)
                                 .map_err(DetectionError::History)?;
                         }
                     }
