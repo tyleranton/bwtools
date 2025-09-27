@@ -1,3 +1,5 @@
+use std::sync::OnceLock;
+
 use anyhow::{Result, anyhow};
 use bw_web_api_rs::models::aurora_profile::{ScrMmGameLoading, ScrProfile, ScrToonInfo};
 use bw_web_api_rs::models::matchmaker_player_info::MatchmakerPlayerInfo;
@@ -7,7 +9,6 @@ use crate::profile_history::{MatchOutcome, ProfileHistoryKey, ProfileHistoryServ
 
 pub struct ApiHandle {
     client: ApiClient,
-    rt: tokio::runtime::Runtime,
 }
 
 impl ApiHandle {
@@ -17,10 +18,7 @@ impl ApiHandle {
             api_key: None,
         };
         let client = ApiClient::new(config)?;
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()?;
-        Ok(Self { client, rt })
+        Ok(Self { client })
     }
 
     pub fn get_toon_info(&self, name: &str, gw_num: u16) -> Result<ScrToonInfo> {
@@ -28,7 +26,7 @@ impl ApiHandle {
         let fut = self
             .client
             .get_aurora_profile_by_toon_toon_info(name.to_string(), gw);
-        let toon_info: ScrToonInfo = self.rt.block_on(fut)?;
+        let toon_info: ScrToonInfo = runtime().block_on(fut)?;
         Ok(toon_info)
     }
 
@@ -37,7 +35,7 @@ impl ApiHandle {
         let fut = self
             .client
             .get_aurora_profile_by_toon_mm_game_loading(name.to_string(), gw);
-        let data: ScrMmGameLoading = self.rt.block_on(fut)?;
+        let data: ScrMmGameLoading = runtime().block_on(fut)?;
         Ok(data)
     }
 
@@ -94,13 +92,13 @@ impl ApiHandle {
         let fut = self
             .client
             .get_aurora_profile_by_toon_scr_profile(name.to_string(), gw);
-        let data: ScrProfile = self.rt.block_on(fut)?;
+        let data: ScrProfile = runtime().block_on(fut)?;
         Ok(data)
     }
 
     pub fn get_matchmaker_player_info(&self, match_id: &str) -> Result<MatchmakerPlayerInfo> {
         let fut = self.client.get_matchmaker_player_info(match_id.to_string());
-        let data: MatchmakerPlayerInfo = self.rt.block_on(fut)?;
+        let data: MatchmakerPlayerInfo = runtime().block_on(fut)?;
         Ok(data)
     }
 
@@ -411,6 +409,16 @@ pub fn find_guid_for_toon(info: &ScrToonInfo, profile_name: &str) -> Option<u32>
                 .find(|s| s.season_id == season && s.toon.eq_ignore_ascii_case(profile_name))
                 .map(|s| s.toon_guid)
         })
+}
+
+fn runtime() -> &'static tokio::runtime::Runtime {
+    static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+    RUNTIME.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("failed to build global tokio runtime")
+    })
 }
 pub fn map_gateway(num: u16) -> Option<Gateway> {
     match num {

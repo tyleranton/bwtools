@@ -1,8 +1,7 @@
 use std::collections::HashMap;
-use std::fs::{self, File};
+use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -16,6 +15,7 @@ use thiserror::Error;
 use crate::api::ApiHandle;
 use crate::config::Config;
 use crate::error::render_error_message;
+use crate::replay_io::{download_replay, run_screp_overview, sanitize_component};
 
 pub struct ReplayStorage {
     root: PathBuf,
@@ -281,7 +281,7 @@ impl ReplayDownloadJob {
             .map_err(|e| ReplayProcessError::Other(anyhow!(e).context("ensure matchup dir")))?;
 
         let tmp_path = target_dir.join(format!(".tmp-{}.rep", truncate_identifier(&identifier)));
-        if let Err(err) = download_to_path(client, &best.url, &tmp_path) {
+        if let Err(err) = download_replay(client, &best.url, &tmp_path) {
             let _ = fs::remove_file(&tmp_path);
             return Err(ReplayProcessError::Other(err));
         }
@@ -364,34 +364,6 @@ pub enum ReplayProcessError {
     AlreadyExists,
     #[error(transparent)]
     Other(#[from] anyhow::Error),
-}
-
-fn download_to_path(client: &Client, url: &str, path: &Path) -> Result<(), anyhow::Error> {
-    let mut response = client
-        .get(url)
-        .send()
-        .with_context(|| format!("failed to download replay {}", url))?;
-    if !response.status().is_success() {
-        return Err(anyhow!("http status {}", response.status()));
-    }
-    let mut file = File::create(path).with_context(|| format!("create file {:?}", path))?;
-    io::copy(&mut response, &mut file).with_context(|| format!("write replay to {:?}", path))?;
-    Ok(())
-}
-
-fn run_screp_overview(cfg: &Config, path: &Path) -> Result<String, anyhow::Error> {
-    let output = Command::new(&cfg.screp_cmd)
-        .arg("-overview")
-        .arg(path)
-        .output()
-        .with_context(|| format!("failed to run screp on {:?}", path))?;
-    if !output.status.success() {
-        return Err(anyhow!(
-            "screp exited with status {}",
-            output.status.code().unwrap_or(-1)
-        ));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
 fn extract_players(overview: &str, target_toon: &str) -> Option<(String, String, String, String)> {
@@ -477,24 +449,6 @@ fn race_letter(race: &str) -> String {
         return "U".to_string();
     };
     first.to_ascii_uppercase().to_string()
-}
-
-fn sanitize_component(input: &str) -> String {
-    let trimmed = input.trim();
-    let mut out = String::with_capacity(trimmed.len());
-    for ch in trimmed.chars() {
-        if matches!(ch, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || ch.is_control() {
-            out.push('_');
-        } else {
-            out.push(ch);
-        }
-    }
-    let cleaned = out.trim_matches('.').trim();
-    if cleaned.is_empty() {
-        "Unknown".to_string()
-    } else {
-        cleaned.to_string()
-    }
 }
 
 fn parse_matchup_filter(input: &str) -> Option<(char, char)> {

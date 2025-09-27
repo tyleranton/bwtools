@@ -12,6 +12,7 @@ mod profile;
 mod profile_history;
 mod replay;
 mod replay_download;
+mod replay_io;
 mod runtime;
 mod search;
 mod tui;

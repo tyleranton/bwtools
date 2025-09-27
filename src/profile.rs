@@ -1,18 +1,18 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io;
 use std::path::Path;
 
 use crate::app::App;
 use crate::config::Config;
 use crate::overlay::{OverlayError, OverlayService};
 use crate::profile_history::{MatchOutcome, ProfileHistoryKey, ProfileHistoryService, StoredMatch};
-use anyhow::{Context, Result as AnyhowResult, anyhow};
+use anyhow::{Context, Result as AnyhowResult};
 use reqwest::blocking::Client;
 use thiserror::Error;
 use tracing::info;
 
 use crate::replay::parse_screp_duration_seconds;
+use crate::replay_io::{download_replay, run_screp_overview, sanitize_identifier};
 
 pub struct ProfileService;
 
@@ -290,44 +290,6 @@ fn seed_single_replay(
     Ok(true)
 }
 
-fn download_to_path(client: &Client, url: &str, path: &Path) -> AnyhowResult<()> {
-    let mut response = client
-        .get(url)
-        .send()
-        .context("send replay download request")?
-        .error_for_status()
-        .context("replay download HTTP status")?;
-    let mut file = fs::File::create(path).context("create temp replay file")?;
-    io::copy(&mut response, &mut file).context("write replay data")?;
-    Ok(())
-}
-
-fn run_screp_overview(cfg: &Config, path: &Path) -> AnyhowResult<String> {
-    let output = std::process::Command::new(&cfg.screp_cmd)
-        .arg("-overview")
-        .arg(path)
-        .output()
-        .with_context(|| format!("failed to run screp on {:?}", path))?;
-    if !output.status.success() {
-        return Err(anyhow!(
-            "screp exited with status {}",
-            output.status.code().unwrap_or(-1)
-        ));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
-}
-
-fn sanitize_identifier(input: &str) -> String {
-    let mut out: String = input
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-        .collect();
-    if out.is_empty() {
-        out.push('r');
-    }
-    out
-}
-
 fn fetch_replay_duration(
     api: &crate::api::ApiHandle,
     cfg: &Config,
@@ -360,10 +322,9 @@ fn fetch_replay_duration(
     let sanitized = sanitize_identifier(&identifier);
     let tmp_path = seed_root.join(format!("{sanitized}.rep"));
 
-    download_to_path(client, &best.url, &tmp_path)
+    download_replay(client, &best.url, &tmp_path)
         .with_context(|| format!("download replay {}", best.url))?;
-    let overview = run_screp_overview(cfg, &tmp_path)
-        .with_context(|| format!("run screp on {:?}", tmp_path))?;
+    let overview = run_screp_overview(cfg, &tmp_path)?;
     let _ = fs::remove_file(&tmp_path);
 
     Ok(parse_screp_duration_seconds(&overview))
