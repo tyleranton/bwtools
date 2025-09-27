@@ -6,6 +6,7 @@ mod detect;
 mod error;
 mod history;
 mod input;
+mod interaction;
 mod overlay;
 mod players;
 mod profile;

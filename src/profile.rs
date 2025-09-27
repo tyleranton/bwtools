@@ -143,25 +143,14 @@ fn seed_profile_history(
         return Ok(());
     }
 
-    let seed_root = cfg.replay_library_root.join(".seed_tmp");
-    if seed_root.exists() {
-        let _ = fs::remove_dir_all(&seed_root);
-    }
-    fs::create_dir_all(&seed_root).context("create seed replay temp directory")?;
+    let workspace = SeedWorkspace::create(&cfg.replay_library_root)?;
 
     info!(
         replays = profile.replays.len(),
         "seeding profile history from recent replays"
     );
 
-    let mut game_by_id: HashMap<String, &bw_web_api_rs::models::common::GameResult> =
-        HashMap::new();
-    let mut game_by_match: HashMap<String, &bw_web_api_rs::models::common::GameResult> =
-        HashMap::new();
-    for game in &profile.game_results {
-        game_by_id.insert(game.game_id.clone(), game);
-        game_by_match.insert(game.match_guid.clone(), game);
-    }
+    let lookup = GameLookup::new(profile);
 
     let client = Client::builder()
         .build()
@@ -174,7 +163,7 @@ fn seed_profile_history(
             break;
         }
         let mut was_dodge = false;
-        match fetch_replay_duration(api, cfg, &client, &seed_root, replay) {
+        match fetch_replay_duration(api, cfg, &client, workspace.path(), replay) {
             Ok(Some(duration)) if duration < 60 => was_dodge = true,
             Ok(_) => {}
             Err(err) => {
@@ -186,15 +175,7 @@ fn seed_profile_history(
             }
         }
 
-        match seed_single_replay(
-            main_name,
-            history,
-            &history_key,
-            replay,
-            &game_by_id,
-            &game_by_match,
-            was_dodge,
-        ) {
+        match seed_single_replay(main_name, history, &history_key, replay, &lookup, was_dodge) {
             Ok(true) => {
                 processed += 1;
                 if was_dodge {
@@ -213,8 +194,6 @@ fn seed_profile_history(
     }
 
     info!(processed, dodges, "profile history seeding complete");
-
-    let _ = fs::remove_dir_all(&seed_root);
     Ok(())
 }
 
@@ -223,14 +202,10 @@ fn seed_single_replay(
     history: &mut ProfileHistoryService,
     history_key: &ProfileHistoryKey,
     replay: &bw_web_api_rs::models::common::Replay,
-    games_by_id: &HashMap<String, &bw_web_api_rs::models::common::GameResult>,
-    games_by_match: &HashMap<String, &bw_web_api_rs::models::common::GameResult>,
+    lookup: &GameLookup,
     was_dodge: bool,
 ) -> AnyhowResult<bool> {
-    let game = games_by_id
-        .get(&replay.attributes.game_id)
-        .copied()
-        .or_else(|| games_by_match.get(&replay.link).copied());
+    let game = lookup.find(replay);
 
     if game.is_none() {
         tracing::debug!(replay_link = %replay.link, "seeding skipped: no matching game result");
@@ -328,4 +303,59 @@ fn fetch_replay_duration(
     let _ = fs::remove_file(&tmp_path);
 
     Ok(parse_screp_duration_seconds(&overview))
+}
+
+struct SeedWorkspace {
+    path: std::path::PathBuf,
+}
+
+impl SeedWorkspace {
+    fn create(root: &Path) -> AnyhowResult<Self> {
+        let path = root.join(".seed_tmp");
+        if path.exists() {
+            let _ = fs::remove_dir_all(&path);
+        }
+        fs::create_dir_all(&path).context("create seed replay temp directory")?;
+        Ok(Self { path })
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for SeedWorkspace {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
+struct GameLookup<'a> {
+    by_id: HashMap<&'a str, &'a bw_web_api_rs::models::common::GameResult>,
+    by_match: HashMap<&'a str, &'a bw_web_api_rs::models::common::GameResult>,
+}
+
+impl<'a> GameLookup<'a> {
+    fn new(profile: &'a bw_web_api_rs::models::aurora_profile::ScrProfile) -> Self {
+        let mut by_id = HashMap::new();
+        let mut by_match = HashMap::new();
+        for game in &profile.game_results {
+            by_id.insert(game.game_id.as_str(), game);
+            by_match.insert(game.match_guid.as_str(), game);
+        }
+        Self { by_id, by_match }
+    }
+
+    fn find(
+        &self,
+        replay: &bw_web_api_rs::models::common::Replay,
+    ) -> Option<&'a bw_web_api_rs::models::common::GameResult> {
+        if let Some(game) = self.by_id.get(replay.attributes.game_id.as_str()) {
+            return Some(*game);
+        }
+        if let Some(game) = self.by_match.get(replay.link.as_str()) {
+            return Some(*game);
+        }
+        None
+    }
 }

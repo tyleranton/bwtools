@@ -4,6 +4,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::App;
+use crate::interaction::Intent;
 use crate::ui::profile_stats::profile_stat_lines;
 
 pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
@@ -174,4 +175,30 @@ pub fn render_search(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
             )),
         );
     frame.render_widget(matches_panel, body[1]);
+}
+
+pub fn intent_at(app: &App, x: u16, y: u16) -> Option<Intent> {
+    if let Some(rect) = app.search.other_toons_rect
+        && x >= rect.x
+        && y >= rect.y
+        && y < rect.y + rect.height
+    {
+        let idx = (y - rect.y) as usize;
+        if idx < app.search.other_toons_data.len() {
+            let text_width = app
+                .search
+                .other_toons
+                .get(idx)
+                .map(|s| s.chars().count() as u16)
+                .unwrap_or(0);
+            if x < rect.x + text_width {
+                let (toon, gw, _) = app.search.other_toons_data[idx].clone();
+                return Some(Intent::BeginSearch {
+                    name: toon,
+                    gateway: gw,
+                });
+            }
+        }
+    }
+    None
 }

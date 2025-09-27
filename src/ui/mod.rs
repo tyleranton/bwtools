@@ -3,11 +3,11 @@ use ratatui::layout::{Constraint, Direction, Layout};
 mod debug_view;
 mod display;
 mod footer;
-mod main_view;
+pub mod main_view;
 mod players_view;
 mod profile_stats;
 mod replays_view;
-mod search_view;
+pub mod search_view;
 mod status;
 
 use crate::app::{App, View};
