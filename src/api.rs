@@ -279,30 +279,55 @@ impl ApiHandle {
         let mut race_counts = std::collections::HashMap::new();
         for m in combined.iter() {
             if let Some(r) = &m.main_race {
-                *race_counts.entry(r.to_lowercase()).or_insert(0usize) += 1;
+                let lower = r.to_ascii_lowercase();
+                *race_counts.entry(lower).or_insert(0usize) += 1;
             }
         }
-        let main_race_lower = race_counts
+
+        let is_random_player = ["protoss", "terran", "zerg"]
             .into_iter()
-            .max_by_key(|(_, count)| *count)
-            .map(|(race, _)| race);
+            .all(|race| race_counts.get(race).copied().unwrap_or_default() > 0);
+
+        let main_race_lower = if is_random_player {
+            Some("random".to_string())
+        } else {
+            race_counts
+                .into_iter()
+                .max_by_key(|(_, count)| *count)
+                .map(|(race, _)| race)
+        };
 
         let mut matchup = std::collections::HashMap::new();
-        if let Some(ref mr) = main_race_lower {
-            for m in combined.iter() {
-                let mrace = m.main_race.as_deref().unwrap_or("").to_lowercase();
-                if mrace != *mr {
-                    continue;
-                }
-                let opp = m.opponent_race.as_deref().unwrap_or("").to_lowercase();
-                if !m.result.counts_for_record() {
-                    continue;
-                }
-                let entry = matchup.entry(opp).or_insert((0u32, 0u32));
-                entry.1 = entry.1.saturating_add(1);
-                if m.result.is_win() {
-                    entry.0 = entry.0.saturating_add(1);
-                }
+        for m in combined.iter() {
+            if !m.result.counts_for_record() {
+                continue;
+            }
+
+            let include_match = if is_random_player {
+                m.main_race.as_deref().map_or(false, |race| {
+                    matches!(
+                        race.to_ascii_lowercase().as_str(),
+                        "protoss" | "terran" | "zerg"
+                    )
+                })
+            } else if let Some(ref mr) = main_race_lower {
+                m.main_race
+                    .as_deref()
+                    .map(|race| race.eq_ignore_ascii_case(mr))
+                    .unwrap_or(false)
+            } else {
+                false
+            };
+
+            if !include_match {
+                continue;
+            }
+
+            let opp = m.opponent_race.as_deref().unwrap_or("").to_lowercase();
+            let entry = matchup.entry(opp).or_insert((0u32, 0u32));
+            entry.1 = entry.1.saturating_add(1);
+            if m.result.is_win() {
+                entry.0 = entry.0.saturating_add(1);
             }
         }
 
@@ -330,22 +355,25 @@ impl ApiHandle {
             "protoss" => "Protoss",
             "terran" => "Terran",
             "zerg" => "Zerg",
+            "random" => "Random",
             _ => "Unknown",
         };
         let main_initial = |r: &str| match r {
             "protoss" => "P",
             "terran" => "T",
             "zerg" => "Z",
+            "random" => "R",
             _ => "?",
         };
         let opp_initial = |r: &str| match r {
             "protoss" => "P",
             "terran" => "T",
             "zerg" => "Z",
+            "random" => "R",
             _ => "?",
         };
 
-        let order = ["protoss", "terran", "zerg"];
+        let order = ["protoss", "terran", "zerg", "random"];
         let mut lines: Vec<String> = Vec::new();
         let mr_init = main_race_lower.as_deref().map(main_initial).unwrap_or("?");
         #[allow(clippy::collapsible_if)]
