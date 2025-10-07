@@ -288,7 +288,7 @@ fn build_opponent_outcome(
     let (race, matchups) = match api.get_scr_profile(opp_name, opp_gw) {
         Ok(profile) => {
             let (mr, lines, _results, _, _) =
-                api.profile_stats_last100(&profile, opp_name, None, None);
+                api.profile_stats_last100(&profile, opp_name, None, None, None);
             tracing::debug!(
                 opponent = %opp_name,
                 gateway = opp_gw,

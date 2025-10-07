@@ -66,8 +66,13 @@ impl ProfileService {
                 tracing::warn!(error = %err, "failed to seed profile history");
             }
 
-            let (mr, lines, _results, self_dodged, opp_dodged) =
-                api.profile_stats_last100(&profile, &name, profile_history, Some(&history_key));
+            let (mr, lines, _results, self_dodged, opp_dodged) = api.profile_stats_last100(
+                &profile,
+                &name,
+                profile_history,
+                Some(&history_key),
+                Some(&app.opponent.history),
+            );
             app.self_profile.main_race = mr;
             app.self_profile.matchups = lines;
             app.self_profile.self_dodged = self_dodged;
@@ -115,8 +120,13 @@ impl ProfileService {
                 tracing::warn!(error = %err, "failed to seed profile history");
             }
 
-            let (mr, lines, _results, self_dodged, opp_dodged) =
-                api.profile_stats_last100(&profile, &name, profile_history, Some(&history_key));
+            let (mr, lines, _results, self_dodged, opp_dodged) = api.profile_stats_last100(
+                &profile,
+                &name,
+                profile_history,
+                Some(&history_key),
+                Some(&app.opponent.history),
+            );
             app.self_profile.main_race = mr;
             app.self_profile.matchups = lines;
             app.self_profile.self_dodged = self_dodged;

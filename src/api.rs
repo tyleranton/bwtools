@@ -5,6 +5,7 @@ use bw_web_api_rs::models::aurora_profile::{ScrMmGameLoading, ScrProfile, ScrToo
 use bw_web_api_rs::models::matchmaker_player_info::MatchmakerPlayerInfo;
 use bw_web_api_rs::{ApiClient, ApiConfig, types::Gateway};
 
+use crate::history::OpponentRecord;
 use crate::profile_history::{MatchOutcome, ProfileHistoryKey, ProfileHistoryService, StoredMatch};
 
 pub struct ApiHandle {
@@ -222,7 +223,21 @@ impl ApiHandle {
         main_toon: &str,
         profile_history: Option<&mut ProfileHistoryService>,
         history_key: Option<&ProfileHistoryKey>,
+        known_random_opponents: Option<&std::collections::HashMap<String, OpponentRecord>>,
     ) -> (Option<String>, Vec<String>, Vec<bool>, u32, u32) {
+        let random_opponents: Option<std::collections::HashSet<String>> =
+            known_random_opponents.map(|map| {
+                map.iter()
+                    .filter(|(_, record)| {
+                        record
+                            .race
+                            .as_deref()
+                            .map(|race| race.eq_ignore_ascii_case("random"))
+                            .unwrap_or(false)
+                    })
+                    .map(|(name, _)| name.clone())
+                    .collect()
+            });
         let mut matches: Vec<StoredMatch> = Vec::new();
         for g in profile.game_results.iter() {
             let actual: Vec<&bw_web_api_rs::models::common::Player> = g
@@ -254,10 +269,19 @@ impl ApiHandle {
             } else {
                 opp_player.toon.clone()
             };
+            let opponent_key = opponent_name.to_ascii_lowercase();
+            let mut opponent_race = opp_player.attributes.race.clone();
+            if random_opponents
+                .as_ref()
+                .map(|set| set.contains(&opponent_key))
+                .unwrap_or(false)
+            {
+                opponent_race = Some("Random".to_string());
+            }
             matches.push(StoredMatch {
                 timestamp: ts,
                 opponent: opponent_name,
-                opponent_race: opp_player.attributes.race.clone(),
+                opponent_race,
                 main_race: main_player.attributes.race.clone(),
                 result,
             });

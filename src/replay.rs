@@ -325,6 +325,7 @@ mod screp_watch {
                                     &name,
                                     Some(profile_history),
                                     Some(&history_key),
+                                    Some(&app.opponent.history),
                                 );
                             main_race_update = Some(mr);
                             matchup_update = Some(lines);
