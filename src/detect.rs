@@ -191,7 +191,8 @@ fn detect_self_switch(
 
     match reader.latest_mmgameloading_profile(cfg.scan_window_secs) {
         Ok(Some((mm_name, mm_gw))) => {
-            let is_own = app.self_profile.own_profiles.contains(&mm_name);
+            let mm_key = mm_name.to_ascii_lowercase();
+            let is_own = app.self_profile.own_profiles.contains(&mm_key);
             let current_name = app.self_profile.name.as_deref().unwrap_or("<none>");
             let current_gateway = app.self_profile.gateway.unwrap_or(0);
             tracing::debug!(
@@ -213,6 +214,35 @@ fn detect_self_switch(
         }
         Ok(None) => {}
         Err(err) => tracing::warn!(error = %err, "failed to detect self switch"),
+    }
+
+    match reader.latest_self_profile(cfg.scan_window_secs) {
+        Ok(Some((toon_name, toon_gw))) => {
+            let current_name = app.self_profile.name.as_deref().unwrap_or("<none>");
+            let current_gateway = app.self_profile.gateway.unwrap_or(0);
+            let changed_name = app
+                .self_profile
+                .name
+                .as_deref()
+                .map(|name| !name.eq_ignore_ascii_case(&toon_name))
+                .unwrap_or(true);
+            let changed_gw = app.self_profile.gateway != Some(toon_gw);
+            if changed_name || changed_gw {
+                tracing::debug!(
+                    toon_name = %toon_name,
+                    toon_gateway = toon_gw,
+                    current_name,
+                    current_gateway,
+                    "scr_tooninfo entry observed"
+                );
+                return Ok(Some(SelfProfileSwitch {
+                    name: toon_name,
+                    gateway: toon_gw,
+                }));
+            }
+        }
+        Ok(None) => {}
+        Err(err) => tracing::warn!(error = %err, "failed to detect self tooninfo switch"),
     }
     Ok(None)
 }
