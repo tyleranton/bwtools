@@ -49,6 +49,5 @@ pub fn render_status(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, ap
     let status = Paragraph::new(status_lines)
         .alignment(Alignment::Left)
         .block(status_block);
-    app.layout.status_opponent_rect = None;
     frame.render_widget(status, area);
 }

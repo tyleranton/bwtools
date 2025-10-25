@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use crossterm::event::{self, Event};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 
@@ -11,13 +11,12 @@ use crate::config::Config;
 use crate::detect::DetectionService;
 use crate::error::AppError;
 use crate::history::{FileHistorySource, HistoryService};
+use crate::interaction::Intent;
 use crate::overlay::OverlayService;
-use crate::players::PlayerDirectory;
 use crate::profile::ProfileService;
 use crate::profile_history::ProfileHistoryService;
 use crate::replay::ReplayService;
 use crate::replay_download::{ReplayDownloadRequest, ReplayStorage};
-use crate::search::SearchService;
 use crate::tui::{restore_terminal, setup_terminal};
 use crate::ui::render;
 use which::which;
@@ -73,16 +72,10 @@ impl AppRuntime {
                 .checked_sub(self.last_tick.elapsed())
                 .unwrap_or_else(|| Duration::from_secs(0));
 
-            if event::poll(timeout).map_err(AppError::TerminalRender)? {
-                match event::read().map_err(AppError::TerminalRender)? {
-                    Event::Key(key) => {
-                        crate::input::handle_key_event(&mut self.app, key);
-                    }
-                    Event::Mouse(me) => {
-                        crate::input::handle_mouse_event(&mut self.app, me);
-                    }
-                    _ => {}
-                }
+            if event::poll(timeout).map_err(AppError::TerminalRender)?
+                && let Event::Key(key) = event::read().map_err(AppError::TerminalRender)?
+            {
+                handle_key_event(&mut self.app, key);
             }
 
             if self.last_tick.elapsed() >= self.tick_rate {
@@ -103,11 +96,6 @@ impl AppRuntime {
                 {
                     tracing::error!(error = %err, "fetch self profile failed");
                     self.app.status.last_profile_text = some_text("Profile error", &err);
-                }
-                if self.app.search.in_progress
-                    && let Err(err) = SearchService::run(&mut self.app)
-                {
-                    tracing::warn!(error = %err, "search run failed");
                 }
                 if self.app.is_ready()
                     && let Err(err) = ProfileService::poll_self_rating(
@@ -171,15 +159,6 @@ impl AppRuntime {
             }
         }
         self.history = Some(history);
-
-        match PlayerDirectory::load_optional() {
-            Ok(Some(directory)) => self.app.set_player_directory(directory),
-            Ok(None) => {
-                self.app.mark_player_directory_missing();
-                tracing::info!("player list not bundled; players view disabled");
-            }
-            Err(err) => tracing::error!(error = %err, "failed to load player list"),
-        }
 
         self.app.detection.screp_available =
             which(&self.cfg.screp_cmd).is_ok() && Path::new(&self.cfg.last_replay_path).exists();
@@ -252,6 +231,26 @@ where
 {
     let rendered = crate::error::render_error_message(err);
     Some(format!("{prefix}: {rendered}"))
+}
+
+fn handle_key_event(app: &mut App, key: KeyEvent) {
+    if key.kind != KeyEventKind::Press {
+        return;
+    }
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        match key.code {
+            KeyCode::Char('d') => Intent::ToggleDebug.apply(app),
+            KeyCode::Char('m') => Intent::ShowMain.apply(app),
+            KeyCode::Char('r') => Intent::ShowReplays.apply(app),
+            KeyCode::Char('q') => Intent::Quit.apply(app),
+            _ => {}
+        }
+    } else {
+        match key.code {
+            KeyCode::Esc => Intent::Quit.apply(app),
+            other => app.on_key(other),
+        }
+    }
 }
 
 struct DetectionEngine {

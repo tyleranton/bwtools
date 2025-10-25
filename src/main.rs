@@ -5,17 +5,14 @@ mod config;
 mod detect;
 mod error;
 mod history;
-mod input;
 mod interaction;
 mod overlay;
-mod players;
 mod profile;
 mod profile_history;
 mod replay;
 mod replay_download;
 mod replay_io;
 mod runtime;
-mod search;
 mod tui;
 mod ui;
 

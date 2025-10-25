@@ -3,11 +3,8 @@ use std::sync::mpsc::Receiver;
 use std::thread::JoinHandle;
 use std::time::Instant;
 
-use ratatui::layout::Rect;
-
 use crate::api::ApiHandle;
 use crate::history::OpponentRecord;
-use crate::players::{PlayerDirectory, PlayerEntry};
 use crate::profile_history::MatchOutcome;
 use crate::replay_download::{ReplayDownloadRequest, ReplayDownloadSummary, ReplayStorage};
 
@@ -15,9 +12,7 @@ use crate::replay_download::{ReplayDownloadRequest, ReplayDownloadSummary, Repla
 pub enum View {
     Main,
     Debug,
-    Search,
     Replays,
-    Players,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,45 +22,6 @@ pub enum ReplayFocus {
     Gateway,
     Matchup,
     Count,
-}
-
-#[derive(Debug)]
-pub struct SearchState {
-    pub name: String,
-    pub gateway: u16,
-    pub focus_gateway: bool,
-    pub in_progress: bool,
-    pub rating: Option<u32>,
-    pub other_toons: Vec<String>,
-    pub other_toons_data: Vec<(String, u16, u32)>,
-    pub matches: Vec<String>,
-    pub error: Option<String>,
-    pub matches_scroll: u16,
-    pub cursor: usize,
-    pub main_race: Option<String>,
-    pub matchups: Vec<String>,
-    pub other_toons_rect: Option<Rect>,
-}
-
-impl Default for SearchState {
-    fn default() -> Self {
-        Self {
-            name: String::new(),
-            gateway: 10,
-            focus_gateway: false,
-            in_progress: false,
-            rating: None,
-            other_toons: Vec::new(),
-            other_toons_data: Vec::new(),
-            matches: Vec::new(),
-            error: None,
-            matches_scroll: 0,
-            cursor: 0,
-            main_race: None,
-            matchups: Vec::new(),
-            other_toons_rect: None,
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -119,16 +75,6 @@ pub struct DodgeCandidate {
 }
 
 #[derive(Debug, Default)]
-pub struct PlayersState {
-    pub directory: Option<PlayerDirectory>,
-    pub scroll: u16,
-    pub filtered: Vec<PlayerEntry>,
-    pub search_query: String,
-    pub search_cursor: usize,
-    pub missing_data: bool,
-}
-
-#[derive(Debug, Default)]
 pub struct DebugState {
     pub window_secs: i64,
     pub recent: Vec<String>,
@@ -170,7 +116,6 @@ pub struct SelfProfileState {
 pub struct OpponentState {
     pub name: Option<String>,
     pub gateway: Option<u16>,
-    pub toons: Vec<String>,
     pub toons_data: Vec<(String, u16, u32)>,
     pub last_identity: Option<(String, u16)>,
     pub race: Option<String>,
@@ -217,12 +162,6 @@ impl std::fmt::Debug for ReplayWatchState {
 }
 
 #[derive(Debug, Default)]
-pub struct LayoutState {
-    pub status_opponent_rect: Option<Rect>,
-    pub main_opponent_toons_rect: Option<Rect>,
-}
-
-#[derive(Debug, Default)]
 pub struct StatusState {
     pub last_profile_text: Option<String>,
 }
@@ -237,9 +176,6 @@ pub struct App {
     pub overlays: OverlayState,
     pub replay: ReplayState,
     pub replay_watch: ReplayWatchState,
-    pub search: SearchState,
-    pub players: PlayersState,
-    pub layout: LayoutState,
     pub status: StatusState,
 }
 
@@ -253,22 +189,11 @@ impl App {
     pub fn reset_opponent_state(&mut self) {
         self.opponent.name = None;
         self.opponent.gateway = None;
-        self.opponent.toons.clear();
         self.opponent.toons_data.clear();
         self.opponent.last_identity = None;
         self.opponent.race = None;
         self.overlays.opponent_last_text = None;
         self.opponent.matchups.clear();
-    }
-
-    pub fn begin_search(&mut self, name: String, gateway: u16) {
-        self.view = View::Search;
-        self.search.name = name;
-        self.search.gateway = gateway;
-        self.search.focus_gateway = false;
-        self.search.cursor = self.search.name.chars().count();
-        self.search.matches_scroll = 0;
-        self.search.in_progress = true;
     }
 
     pub fn is_ready(&self) -> bool {
@@ -291,9 +216,6 @@ impl Default for App {
             overlays: OverlayState::default(),
             replay: ReplayState::default(),
             replay_watch: ReplayWatchState::default(),
-            search: SearchState::default(),
-            players: PlayersState::default(),
-            layout: LayoutState::default(),
             status: StatusState::default(),
         }
     }

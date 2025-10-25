@@ -119,14 +119,7 @@ impl OpponentOutcome {
         if let Some(id) = self.last_identity {
             app.opponent.last_identity = Some(id);
         }
-        app.opponent.toons_data = self.toons.clone();
-        app.opponent.toons = self
-            .toons
-            .into_iter()
-            .map(|(toon, gw, rating)| {
-                format!("{} • {} • {}", toon, crate::api::gateway_label(gw), rating)
-            })
-            .collect();
+        app.opponent.toons_data = self.toons;
         app.opponent.race = self.race.clone();
         app.opponent.matchups = self.matchups.clone();
 
@@ -333,6 +326,11 @@ fn build_opponent_outcome(
         }
     };
 
+    let history_update = match api.get_toon_info(opp_name, opp_gw) {
+        Ok(info) => build_history_update(app, api, opp_name, opp_gw, info, race.clone()),
+        Err(err) => return Err(DetectionError::Api(err)),
+    };
+
     Ok(Some(OpponentOutcome {
         name: opp_name.to_string(),
         gateway: opp_gw,
@@ -340,10 +338,7 @@ fn build_opponent_outcome(
         race,
         matchups,
         last_identity: Some(identity),
-        history_update: match api.get_toon_info(opp_name, opp_gw) {
-            Ok(info) => build_history_update(app, api, opp_name, opp_gw, info),
-            Err(err) => return Err(DetectionError::Api(err)),
-        },
+        history_update,
     }))
 }
 
@@ -353,6 +348,7 @@ fn build_history_update(
     opp_name: &str,
     opp_gw: u16,
     info: bw_web_api_rs::models::aurora_profile::ScrToonInfo,
+    race_hint: Option<String>,
 ) -> Option<OpponentHistoryUpdate> {
     let season = info.matchmaked_current_season;
     let profiles = info.profiles.as_deref().unwrap_or(&[]);
@@ -375,6 +371,16 @@ fn build_history_update(
     let mut losses = existing.map(|r| r.losses).unwrap_or(0);
     let mut last_match_ts = existing.and_then(|r| r.last_match_ts);
     let mut race = existing.and_then(|r| r.race.clone());
+    if let Some(ref hint) = race_hint {
+        let already_random = race
+            .as_ref()
+            .map(|r| r.eq_ignore_ascii_case("random"))
+            .unwrap_or(false);
+        let hint_is_random = hint.eq_ignore_ascii_case("random");
+        if race.is_none() || (hint_is_random && !already_random) {
+            race = Some(hint.clone());
+        }
+    }
     let previous_rating = existing.and_then(|r| r.current_rating);
 
     let needs_record = existing.map(|r| r.wins + r.losses == 0).unwrap_or(true);
@@ -455,8 +461,17 @@ impl OpponentHistoryUpdate {
         if let Some(ts) = self.last_match_ts {
             entry.last_match_ts = Some(ts);
         }
-        if entry.race.is_none() {
-            entry.race = self.race.clone();
+        if let Some(new_race) = self.race.as_ref() {
+            let has_random = entry
+                .race
+                .as_ref()
+                .map(|r| r.eq_ignore_ascii_case("random"))
+                .unwrap_or(false);
+            let replace =
+                entry.race.is_none() || (new_race.eq_ignore_ascii_case("random") && !has_random);
+            if replace {
+                entry.race = Some(new_race.clone());
+            }
         }
         entry.previous_rating = self.previous_rating;
         entry.current_rating = self.current_rating;

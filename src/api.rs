@@ -128,95 +128,6 @@ impl ApiHandle {
         self.compute_rating_for_guid(info, guid)
     }
 
-    pub fn other_toons_with_ratings(
-        &self,
-        info: &ScrToonInfo,
-        main_toon: &str,
-    ) -> Vec<(String, u16, u32)> {
-        // guid -> gateway
-        let mut guid_to_gateway: std::collections::HashMap<u32, u16> =
-            std::collections::HashMap::new();
-        for (gw_str, mapping) in info.toon_guid_by_gateway.iter() {
-            if let Ok(gw) = gw_str.parse::<u16>() {
-                for (_toon_name, guid) in mapping.iter() {
-                    guid_to_gateway.insert(*guid, gw);
-                }
-            }
-        }
-        // Aggregate from stats to ensure we capture all toons present this season
-        let season = info.matchmaked_current_season;
-        let mut agg: std::collections::HashMap<u32, (String, u16, u32, u32)> =
-            std::collections::HashMap::new();
-        for s in info
-            .matchmaked_stats
-            .iter()
-            .filter(|s| s.season_id == season)
-        {
-            let gw = guid_to_gateway.get(&s.toon_guid).copied().unwrap_or(0);
-            let entry = agg
-                .entry(s.toon_guid)
-                .or_insert_with(|| (s.toon.clone(), gw, 0, 0));
-            entry.2 = entry.2.saturating_add(s.wins + s.losses); // total games
-            if s.rating > entry.3 {
-                entry.3 = s.rating;
-            } // max rating
-            // prefer non-empty toon name
-            if entry.0.trim().is_empty() && !s.toon.trim().is_empty() {
-                entry.0 = s.toon.clone();
-            }
-        }
-        let mut out: Vec<(String, u16, u32)> = agg
-            .into_values()
-            .filter(|(toon, _gw, total, _maxr)| {
-                *total >= 5 && !toon.eq_ignore_ascii_case(main_toon)
-            })
-            .map(|(toon, gw, _total, maxr)| (toon, gw, maxr))
-            .collect();
-        out.sort_by(|a, b| b.2.cmp(&a.2));
-        out
-    }
-
-    pub fn match_summaries(&self, profile: &ScrProfile, main_toon: &str) -> Vec<String> {
-        let mut out = Vec::new();
-        for g in profile.game_results.iter() {
-            // Keep only real players: type == "player" and non-empty toon
-            let actual: Vec<(usize, &bw_web_api_rs::models::common::Player)> = g
-                .players
-                .iter()
-                .enumerate()
-                .filter(|(_, p)| p.attributes.r#type == "player" && !p.toon.trim().is_empty())
-                .collect();
-            if actual.len() != 2 {
-                continue;
-            }
-
-            // Find main among actual players (case-insensitive)
-            let main_pos = actual
-                .iter()
-                .position(|(_, p)| p.toon.eq_ignore_ascii_case(main_toon));
-            let Some(mi_pos) = main_pos else { continue };
-            let (mi_idx, main_player) = actual[mi_pos];
-            let (_, opp_player) = actual[1 - mi_pos];
-
-            // Sanitize opponent name
-            let opp = if opp_player.toon.trim().is_empty() {
-                "Unknown".to_string()
-            } else {
-                opp_player.toon.clone()
-            };
-
-            // Use main player's result
-            let result = match main_player.result.to_ascii_lowercase().as_str() {
-                "win" => "Win",
-                "loss" => "Loss",
-                _ => &main_player.result,
-            };
-            let _ = mi_idx; // silence unused if optimized away
-            out.push(format!("{} vs {}", result, opp));
-        }
-        out
-    }
-
     pub fn profile_stats_last100(
         &self,
         profile: &ScrProfile,
@@ -225,8 +136,8 @@ impl ApiHandle {
         history_key: Option<&ProfileHistoryKey>,
         known_random_opponents: Option<&std::collections::HashMap<String, OpponentRecord>>,
     ) -> (Option<String>, Vec<String>, Vec<bool>, u32, u32) {
-        let random_opponents: Option<std::collections::HashSet<String>> =
-            known_random_opponents.map(|map| {
+        let random_opponents: Option<std::collections::HashSet<String>> = known_random_opponents
+            .map(|map| {
                 map.iter()
                     .filter(|(_, record)| {
                         record
@@ -328,7 +239,7 @@ impl ApiHandle {
             }
 
             let include_match = if is_random_player {
-                m.main_race.as_deref().map_or(false, |race| {
+                m.main_race.as_deref().is_some_and(|race| {
                     matches!(
                         race.to_ascii_lowercase().as_str(),
                         "protoss" | "terran" | "zerg"
@@ -337,8 +248,7 @@ impl ApiHandle {
             } else if let Some(ref mr) = main_race_lower {
                 m.main_race
                     .as_deref()
-                    .map(|race| race.eq_ignore_ascii_case(mr))
-                    .unwrap_or(false)
+                    .is_some_and(|race| race.eq_ignore_ascii_case(mr))
             } else {
                 false
             };
