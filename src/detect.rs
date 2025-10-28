@@ -22,12 +22,14 @@ impl DetectionService {
         reader: &mut CacheReader,
         history: Option<&HistoryService<FileHistorySource>>,
     ) -> Result<(), DetectionError> {
+        let opponent_detection = detect_opponent(app, cfg, reader)?;
         let outcome = DetectionOutcome {
             port: detect_port(app, cfg, reader),
             self_bootstrap: detect_self_bootstrap(app, cfg, reader),
             api_initialized: init_api(app),
             self_switch: detect_self_switch(app, cfg, reader)?,
-            opponent: detect_opponent(app, cfg, reader)?,
+            opponent: opponent_detection.outcome,
+            opponent_observed_at: opponent_detection.observed_at,
         };
 
         outcome.apply(app, cfg, history);
@@ -42,6 +44,13 @@ struct DetectionOutcome {
     api_initialized: bool,
     self_switch: Option<SelfProfileSwitch>,
     opponent: Option<OpponentOutcome>,
+    opponent_observed_at: Option<i64>,
+}
+
+#[derive(Default)]
+struct OpponentDetection {
+    outcome: Option<OpponentOutcome>,
+    observed_at: Option<i64>,
 }
 
 impl DetectionOutcome {
@@ -73,6 +82,10 @@ impl DetectionOutcome {
 
         if let Some(opp) = self.opponent {
             opp.apply(app, cfg, history);
+        }
+
+        if let Some(ts) = self.opponent_observed_at {
+            app.opponent.last_observed_at = Some(ts);
         }
     }
 }
@@ -244,36 +257,65 @@ fn detect_opponent(
     app: &App,
     cfg: &Config,
     reader: &mut CacheReader,
-) -> Result<Option<OpponentOutcome>, DetectionError> {
+) -> Result<OpponentDetection, DetectionError> {
+    let mut result = OpponentDetection::default();
     if !app.is_ready() {
-        return Ok(None);
+        return Ok(result);
     }
 
     let self_name = app.self_profile.name.as_deref();
     match reader.latest_opponent_profile(self_name, cfg.scan_window_secs) {
-        Ok(Some((name, gw))) => {
+        Ok(Some((name, gw, observed_at))) => {
             if app.self_profile.own_profiles.contains(&name) {
                 tracing::debug!(
                     opponent = %name,
                     gateway = gw,
                     "ignoring opponent candidate because it is an owned profile"
                 );
-                return Ok(None);
+                return Ok(result);
+            }
+
+            let observed_ts = observed_at.timestamp();
+            if let Some(prev) = app.opponent.last_observed_at {
+                if observed_ts <= prev {
+                    tracing::debug!(
+                        opponent = %name,
+                        gateway = gw,
+                        observed_ts,
+                        prev,
+                        "stale opponent candidate ignored"
+                    );
+                    return Ok(result);
+                }
+            }
+
+            let identity = (name.clone(), gw);
+            if app.opponent.last_identity.as_ref() == Some(&identity) {
+                tracing::debug!(
+                    opponent = %name,
+                    gateway = gw,
+                    "opponent identity unchanged; refreshing timestamp only"
+                );
+                result.observed_at = Some(observed_ts);
+                return Ok(result);
             }
 
             tracing::debug!(
                 opponent = %name,
                 gateway = gw,
+                observed_ts,
                 "mmgameloading opponent candidate detected"
             );
             if let Some(api) = app.detection.api.as_ref() {
-                return build_opponent_outcome(app, api, &name, gw);
+                let outcome = build_opponent_outcome(app, api, &name, gw)?;
+                result.observed_at = Some(observed_ts);
+                result.outcome = Some(outcome);
             }
         }
         Ok(None) => {}
         Err(err) => tracing::warn!(error = %err, "failed to read opponent profile from cache"),
     }
-    Ok(None)
+    Ok(result)
 }
 
 fn build_opponent_outcome(
@@ -281,17 +323,7 @@ fn build_opponent_outcome(
     api: &crate::api::ApiHandle,
     opp_name: &str,
     opp_gw: u16,
-) -> Result<Option<OpponentOutcome>, DetectionError> {
-    let identity = (opp_name.to_string(), opp_gw);
-    if app.opponent.last_identity.as_ref() == Some(&identity) {
-        tracing::debug!(
-            opponent = %opp_name,
-            gateway = opp_gw,
-            "opponent identity unchanged; skipping refresh"
-        );
-        return Ok(None);
-    }
-
+) -> Result<OpponentOutcome, DetectionError> {
     let toons = match api.opponent_toons_summary(opp_name, opp_gw) {
         Ok(list) => {
             tracing::debug!(
@@ -331,15 +363,15 @@ fn build_opponent_outcome(
         Err(err) => return Err(DetectionError::Api(err)),
     };
 
-    Ok(Some(OpponentOutcome {
+    Ok(OpponentOutcome {
         name: opp_name.to_string(),
         gateway: opp_gw,
         toons,
         race,
         matchups,
-        last_identity: Some(identity),
+        last_identity: Some((opp_name.to_string(), opp_gw)),
         history_update,
-    }))
+    })
 }
 
 fn build_history_update(

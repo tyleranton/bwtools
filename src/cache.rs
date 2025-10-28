@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
 use chrome_cache_parser::ChromeCache;
+use chrome_cache_parser::block_file::{BlockFileCacheEntry, LazyBlockFileCacheEntry};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use percent_encoding::percent_decode_str;
 use url::Url;
@@ -84,13 +85,14 @@ impl CacheReader {
             .entries()
             .context("Failed to read cache entries")?;
         let latest = entries
-            .filter_map(|e| {
-                let entry = e.get().ok()?;
-                let key = entry.key.to_string();
+            .filter_map(|entry| {
+                let entry_ref = entry.get().ok()?;
+                let key = entry_ref.key.to_string();
                 if !key.contains("/web-api/") {
                     return None;
                 }
-                let creation_time: DateTime<Utc> = entry.creation_time.into_datetime_utc().ok()?;
+                let creation_time: DateTime<Utc> =
+                    entry_ref.creation_time.into_datetime_utc().ok()?;
                 if (now - creation_time) >= ChronoDuration::seconds(window_secs) {
                     return None;
                 }
@@ -107,23 +109,27 @@ impl CacheReader {
         &mut self,
         exclude_name: Option<&str>,
         window_secs: i64,
-    ) -> Result<Option<(String, u16)>> {
+    ) -> Result<Option<(String, u16, DateTime<Utc>)>> {
         let now = Utc::now();
         let entries = self
             .cache
             .entries()
             .context("Failed to read cache entries")?;
         let latest = entries
-            .filter_map(|e| {
-                let entry = e.get().ok()?;
-                let key = entry.key.to_string();
-                if !(key.contains("/web-api/v2/aurora-profile-by-toon/")
-                    && key.contains("scr_mmgameloading"))
-                {
-                    return None;
-                }
-                let creation_time: DateTime<Utc> = entry.creation_time.into_datetime_utc().ok()?;
-                if (now - creation_time) >= ChronoDuration::seconds(window_secs) {
+            .filter_map(|mut entry| {
+                let (key, creation_time) = {
+                    let entry_ref = entry.get().ok()?;
+                    let key = entry_ref.key.to_string();
+                    if !(key.contains("/web-api/v2/aurora-profile-by-toon/")
+                        && key.contains("scr_mmgameloading"))
+                    {
+                        return None;
+                    }
+                    let creation_time = entry_creation_time(entry_ref);
+                    (key, creation_time)
+                };
+                let last_used = entry_last_used(&mut entry).or(creation_time)?;
+                if (now - last_used) >= ChronoDuration::seconds(window_secs) {
                     return None;
                 }
                 let (profile, gateway) = parse_profile_from_url_mmgameloading(&key)?;
@@ -132,10 +138,10 @@ impl CacheReader {
                         return None;
                     }
                 }
-                Some(((profile, gateway), creation_time))
+                Some(((profile, gateway), last_used))
             })
             .max_by_key(|(_, ct)| *ct)
-            .map(|(data, _)| data);
+            .map(|(data, observed_at)| (data.0, data.1, observed_at));
         Ok(latest)
     }
 
@@ -149,15 +155,15 @@ impl CacheReader {
             .entries()
             .context("Failed to read cache entries")?;
         let latest = entries
-            .filter_map(|e| {
-                let entry = e.get().ok()?;
-                let key = entry.key.to_string();
+            .filter_map(|entry| {
+                let entry_ref = entry.get().ok()?;
+                let key = entry_ref.key.to_string();
                 if !(key.contains("/web-api/v2/aurora-profile-by-toon/")
                     && key.contains("scr_mmgameloading"))
                 {
                     return None;
                 }
-                let creation_time: DateTime<Utc> = entry.creation_time.into_datetime_utc().ok()?;
+                let creation_time = entry_creation_time(entry_ref)?;
                 if (now - creation_time) >= ChronoDuration::seconds(window_secs) {
                     return None;
                 }
@@ -176,15 +182,15 @@ impl CacheReader {
             .entries()
             .context("Failed to read cache entries")?;
         let latest = entries
-            .filter_map(|e| {
-                let entry = e.get().ok()?;
-                let key = entry.key.to_string();
+            .filter_map(|entry| {
+                let entry_ref = entry.get().ok()?;
+                let key = entry_ref.key.to_string();
                 if !(key.contains("/web-api/v2/aurora-profile-by-toon/")
                     && key.contains("scr_tooninfo"))
                 {
                     return None;
                 }
-                let creation_time: DateTime<Utc> = entry.creation_time.into_datetime_utc().ok()?;
+                let creation_time = entry_creation_time(entry_ref)?;
                 if (now - creation_time) >= ChronoDuration::seconds(window_secs) {
                     return None;
                 }
@@ -203,16 +209,16 @@ impl CacheReader {
             .entries()
             .context("Failed to read cache entries")?;
         let mut items: Vec<(String, i64, DateTime<Utc>)> = entries
-            .filter_map(|e| {
-                let entry = e.get().ok()?;
-                let key = entry.key.to_string();
+            .filter_map(|mut entry| {
+                let key = entry.get().ok()?.key.to_string();
                 if !key.contains("/web-api/") {
                     return None;
                 }
-                let creation_time: DateTime<Utc> = entry.creation_time.into_datetime_utc().ok()?;
-                let age = (now - creation_time).num_seconds();
+                let last_used = entry_last_used(&mut entry)
+                    .or_else(|| entry_creation_time(entry.get().ok()?))?;
+                let age = (now - last_used).num_seconds();
                 if age <= window_secs {
-                    Some((key, age, creation_time))
+                    Some((key, age, last_used))
                 } else {
                     None
                 }
@@ -226,4 +232,14 @@ impl CacheReader {
             .map(|(k, age, _)| (k, age))
             .collect())
     }
+}
+
+fn entry_last_used(entry: &mut LazyBlockFileCacheEntry) -> Option<DateTime<Utc>> {
+    let rankings = entry.get_rankings_node().ok()?;
+    let node = rankings.get().ok()?;
+    node.last_used.into_datetime_utc().ok()
+}
+
+fn entry_creation_time(entry: &BlockFileCacheEntry) -> Option<DateTime<Utc>> {
+    entry.creation_time.into_datetime_utc().ok()
 }

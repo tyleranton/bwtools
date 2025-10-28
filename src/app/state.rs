@@ -118,6 +118,7 @@ pub struct OpponentState {
     pub gateway: Option<u16>,
     pub toons_data: Vec<(String, u16, u32)>,
     pub last_identity: Option<(String, u16)>,
+    pub last_observed_at: Option<i64>,
     pub race: Option<String>,
     pub matchups: Vec<String>,
     pub history: HashMap<String, OpponentRecord>,
@@ -191,6 +192,7 @@ impl App {
         self.opponent.gateway = None;
         self.opponent.toons_data.clear();
         self.opponent.last_identity = None;
+        self.opponent.last_observed_at = None;
         self.opponent.race = None;
         self.overlays.opponent_last_text = None;
         self.opponent.matchups.clear();
