@@ -27,7 +27,7 @@ impl ApiHandle {
         let fut = self
             .client
             .get_aurora_profile_by_toon_toon_info(name.to_string(), gw);
-        let toon_info: ScrToonInfo = runtime().block_on(fut)?;
+        let toon_info: ScrToonInfo = runtime()?.block_on(fut)?;
         Ok(toon_info)
     }
 
@@ -36,7 +36,7 @@ impl ApiHandle {
         let fut = self
             .client
             .get_aurora_profile_by_toon_mm_game_loading(name.to_string(), gw);
-        let data: ScrMmGameLoading = runtime().block_on(fut)?;
+        let data: ScrMmGameLoading = runtime()?.block_on(fut)?;
         Ok(data)
     }
 
@@ -93,13 +93,13 @@ impl ApiHandle {
         let fut = self
             .client
             .get_aurora_profile_by_toon_scr_profile(name.to_string(), gw);
-        let data: ScrProfile = runtime().block_on(fut)?;
+        let data: ScrProfile = runtime()?.block_on(fut)?;
         Ok(data)
     }
 
     pub fn get_matchmaker_player_info(&self, match_id: &str) -> Result<MatchmakerPlayerInfo> {
         let fut = self.client.get_matchmaker_player_info(match_id.to_string());
-        let data: MatchmakerPlayerInfo = runtime().block_on(fut)?;
+        let data: MatchmakerPlayerInfo = runtime()?.block_on(fut)?;
         Ok(data)
     }
 
@@ -310,20 +310,19 @@ impl ApiHandle {
         let order = ["protoss", "terran", "zerg", "random"];
         let mut lines: Vec<String> = Vec::new();
         let mr_init = main_race_lower.as_deref().map(main_initial).unwrap_or("?");
-        #[allow(clippy::collapsible_if)]
         for r in order.iter() {
-            if let Some((wins, total)) = matchup.get(*r) {
-                if *total > 0 {
-                    let pct = ((*wins as f32) / (*total as f32)) * 100.0;
-                    lines.push(format!(
-                        "{}v{}: {:.0}% ({} / {})",
-                        mr_init,
-                        opp_initial(r),
-                        pct.round(),
-                        wins,
-                        total,
-                    ));
-                }
+            if let Some((wins, total)) = matchup.get(*r)
+                && *total > 0
+            {
+                let pct = ((*wins as f32) / (*total as f32)) * 100.0;
+                lines.push(format!(
+                    "{}v{}: {:.0}% ({} / {})",
+                    mr_init,
+                    opp_initial(r),
+                    pct.round(),
+                    wins,
+                    total,
+                ));
             }
         }
 
@@ -373,14 +372,18 @@ pub fn find_guid_for_toon(info: &ScrToonInfo, profile_name: &str) -> Option<u32>
         })
 }
 
-fn runtime() -> &'static tokio::runtime::Runtime {
-    static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
-    RUNTIME.get_or_init(|| {
+fn runtime() -> Result<&'static tokio::runtime::Runtime> {
+    static RUNTIME: OnceLock<Result<tokio::runtime::Runtime, String>> = OnceLock::new();
+    let runtime_result = RUNTIME.get_or_init(|| {
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
-            .expect("failed to build global tokio runtime")
-    })
+            .map_err(|err| err.to_string())
+    });
+
+    runtime_result
+        .as_ref()
+        .map_err(|msg| anyhow!("failed to build global tokio runtime: {msg}"))
 }
 pub fn map_gateway(num: u16) -> Option<Gateway> {
     match num {
@@ -401,5 +404,27 @@ pub fn gateway_label(num: u16) -> &'static str {
         30 => "Korea",
         45 => "Asia",
         _ => "Unknown",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gateway_mapping_and_labels_cover_known_values() {
+        assert_eq!(map_gateway(10), Some(Gateway::USWest));
+        assert_eq!(map_gateway(11), Some(Gateway::USEast));
+        assert_eq!(map_gateway(20), Some(Gateway::Europe));
+        assert_eq!(map_gateway(30), Some(Gateway::Korea));
+        assert_eq!(map_gateway(45), Some(Gateway::Asia));
+        assert_eq!(map_gateway(999), None);
+
+        assert_eq!(gateway_label(10), "US West");
+        assert_eq!(gateway_label(11), "US East");
+        assert_eq!(gateway_label(20), "Europe");
+        assert_eq!(gateway_label(30), "Korea");
+        assert_eq!(gateway_label(45), "Asia");
+        assert_eq!(gateway_label(999), "Unknown");
     }
 }

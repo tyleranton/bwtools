@@ -215,13 +215,10 @@ fn seed_single_replay(
     lookup: &GameLookup,
     was_dodge: bool,
 ) -> AnyhowResult<bool> {
-    let game = lookup.find(replay);
-
-    if game.is_none() {
+    let Some(game) = lookup.find(replay) else {
         tracing::debug!(replay_link = %replay.link, "seeding skipped: no matching game result");
         return Ok(false);
-    }
-    let game = game.unwrap();
+    };
 
     let actual: Vec<&bw_web_api_rs::models::common::Player> = game
         .players

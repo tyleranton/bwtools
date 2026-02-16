@@ -79,56 +79,7 @@ impl AppRuntime {
             }
 
             if self.last_tick.elapsed() >= self.tick_rate {
-                if let Err(err) =
-                    self.detection
-                        .tick(&mut self.app, &self.cfg, self.history.as_ref())
-                {
-                    tracing::error!(error = %err, "detection tick failed");
-                }
-
-                if self.app.is_ready()
-                    && !self.app.self_profile.profile_fetched
-                    && let Err(err) = ProfileService::fetch_self_profile(
-                        &mut self.app,
-                        &self.cfg,
-                        Some(&mut self.profile_history),
-                    )
-                {
-                    tracing::error!(error = %err, "fetch self profile failed");
-                    self.app.status.last_profile_text = some_text("Profile error", &err);
-                }
-                if self.app.is_ready()
-                    && let Err(err) = ProfileService::poll_self_rating(
-                        &mut self.app,
-                        &self.cfg,
-                        Some(&mut self.profile_history),
-                    )
-                {
-                    tracing::error!(error = %err, "poll self rating failed");
-                    self.app.status.last_profile_text = some_text("Profile error", &err);
-                }
-
-                if let Err(err) = self.handle_pending_replay_download() {
-                    tracing::error!(error = %err, "replay download start failed");
-                }
-                self.app.poll_replay_job();
-
-                if let Err(err) = ReplayService::tick(
-                    &mut self.app,
-                    &self.cfg,
-                    self.history.as_ref(),
-                    &mut self.profile_history,
-                ) {
-                    tracing::error!(error = %err, "replay service tick failed");
-                    self.app.status.last_profile_text = some_text("Replay error", &err);
-                }
-
-                if let Err(err) = OverlayService::write_opponent(&self.cfg, &mut self.app) {
-                    tracing::error!(error = %err, "failed to update opponent overlay");
-                    self.app.status.last_profile_text = some_text("Overlay error", &err);
-                }
-
-                self.last_tick = Instant::now();
+                self.tick_services();
             }
         }
 
@@ -223,6 +174,75 @@ impl AppRuntime {
         self.app.replay.in_progress = true;
         Ok(())
     }
+
+    fn tick_services(&mut self) {
+        self.tick_detection();
+        self.tick_profile_services();
+        self.tick_replay_services();
+        self.tick_overlay_services();
+        self.last_tick = Instant::now();
+    }
+
+    fn tick_detection(&mut self) {
+        if let Err(err) = self
+            .detection
+            .tick(&mut self.app, &self.cfg, self.history.as_ref())
+        {
+            tracing::error!(error = %err, "detection tick failed");
+            set_status_error(&mut self.app, "Detection error", &err);
+        }
+    }
+
+    fn tick_profile_services(&mut self) {
+        if !self.app.is_ready() {
+            return;
+        }
+
+        if !self.app.self_profile.profile_fetched
+            && let Err(err) = ProfileService::fetch_self_profile(
+                &mut self.app,
+                &self.cfg,
+                Some(&mut self.profile_history),
+            )
+        {
+            tracing::error!(error = %err, "fetch self profile failed");
+            set_status_error(&mut self.app, "Profile error", &err);
+        }
+
+        if let Err(err) = ProfileService::poll_self_rating(
+            &mut self.app,
+            &self.cfg,
+            Some(&mut self.profile_history),
+        ) {
+            tracing::error!(error = %err, "poll self rating failed");
+            set_status_error(&mut self.app, "Profile error", &err);
+        }
+    }
+
+    fn tick_replay_services(&mut self) {
+        if let Err(err) = self.handle_pending_replay_download() {
+            tracing::error!(error = %err, "replay download start failed");
+            set_status_error(&mut self.app, "Replay error", &err);
+        }
+        self.app.poll_replay_job();
+
+        if let Err(err) = ReplayService::tick(
+            &mut self.app,
+            &self.cfg,
+            self.history.as_ref(),
+            &mut self.profile_history,
+        ) {
+            tracing::error!(error = %err, "replay service tick failed");
+            set_status_error(&mut self.app, "Replay error", &err);
+        }
+    }
+
+    fn tick_overlay_services(&mut self) {
+        if let Err(err) = OverlayService::write_opponent(&self.cfg, &mut self.app) {
+            tracing::error!(error = %err, "failed to update opponent overlay");
+            set_status_error(&mut self.app, "Overlay error", &err);
+        }
+    }
 }
 
 fn some_text<E>(prefix: &str, err: &E) -> Option<String>
@@ -231,6 +251,13 @@ where
 {
     let rendered = crate::error::render_error_message(err);
     Some(format!("{prefix}: {rendered}"))
+}
+
+fn set_status_error<E>(app: &mut App, prefix: &str, err: &E)
+where
+    E: std::fmt::Display + std::fmt::Debug,
+{
+    app.status.last_profile_text = some_text(prefix, err);
 }
 
 fn handle_key_event(app: &mut App, key: KeyEvent) {

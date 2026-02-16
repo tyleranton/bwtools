@@ -5,7 +5,6 @@ use crate::interaction::Intent;
 use super::{App, View};
 
 impl App {
-    #[allow(clippy::collapsible_if)]
     pub fn on_key(&mut self, code: KeyCode) {
         match self.view {
             View::Replays => {

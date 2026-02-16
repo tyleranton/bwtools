@@ -506,3 +506,54 @@ fn replay_date_prefix(ts_secs: u64) -> Option<String> {
     }
     DateTime::<Utc>::from_timestamp(ts_secs as i64, 0).map(|dt| dt.format("%Y%m%d").to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_matchup_filter_accepts_common_formats() {
+        assert_eq!(parse_matchup_filter("PvT"), Some(('P', 'T')));
+        assert_eq!(parse_matchup_filter("p,t"), Some(('P', 'T')));
+        assert_eq!(parse_matchup_filter("z/p"), Some(('Z', 'P')));
+        assert_eq!(parse_matchup_filter(" PT "), Some(('P', 'T')));
+    }
+
+    #[test]
+    fn parse_matchup_filter_rejects_invalid_input() {
+        assert_eq!(parse_matchup_filter(""), None);
+        assert_eq!(parse_matchup_filter("P"), None);
+        assert_eq!(parse_matchup_filter("123"), None);
+    }
+
+    #[test]
+    fn replay_matches_handles_order_independently() {
+        assert!(replay_matches("P,T", ('P', 'T')));
+        assert!(replay_matches("T,P", ('P', 'T')));
+        assert!(!replay_matches("P,Z", ('P', 'T')));
+        assert!(!replay_matches("P", ('P', 'T')));
+    }
+
+    #[test]
+    fn race_letter_maps_first_character_or_unknown() {
+        assert_eq!(race_letter("Protoss"), "P");
+        assert_eq!(race_letter("zerg"), "Z");
+        assert_eq!(race_letter(""), "U");
+    }
+
+    #[test]
+    fn replay_date_prefix_filters_sentinel_and_formats_valid_epoch() {
+        assert_eq!(replay_date_prefix(0), None);
+        assert_eq!(replay_date_prefix(u32::MAX as u64), None);
+        assert_eq!(
+            replay_date_prefix(1_704_067_200),
+            Some("20240101".to_string())
+        );
+    }
+
+    #[test]
+    fn truncate_identifier_limits_to_sixteen_chars() {
+        assert_eq!(truncate_identifier("abcdefghijklmnop"), "abcdefghijklmnop");
+        assert_eq!(truncate_identifier("abcdefghijklmnopq"), "abcdefghijklmnop");
+    }
+}

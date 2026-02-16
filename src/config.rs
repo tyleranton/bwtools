@@ -2,6 +2,8 @@ use std::env;
 use std::path::PathBuf;
 use std::time::Duration;
 
+const DEFAULT_USER: &str = "default";
+
 #[derive(Clone)]
 pub struct Config {
     pub tick_rate: Duration,
@@ -51,21 +53,14 @@ impl Default for Config {
 
 fn default_cache_dir() -> PathBuf {
     if cfg!(target_os = "windows") {
-        let home = env::var("USERPROFILE").unwrap_or_else(|_| String::from("."));
-        return PathBuf::from(home)
+        return windows_user_profile_dir()
             .join("AppData")
             .join("Local")
             .join("Temp")
             .join("blizzard_browser_cache");
     }
 
-    let home = env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("~"));
-    let user = env::var("USER").unwrap_or_else(|_| "default".to_string());
-    home.join(".wine-battlenet/drive_c/users")
-        .join(user)
-        .join("AppData/Local/Temp/blizzard_browser_cache")
+    wine_user_root().join("AppData/Local/Temp/blizzard_browser_cache")
 }
 
 fn default_rating_output_path() -> PathBuf {
@@ -82,21 +77,9 @@ fn default_profile_history_path() -> PathBuf {
 
 fn default_last_replay_path() -> PathBuf {
     if cfg!(target_os = "windows") {
-        let home = env::var("USERPROFILE").unwrap_or_else(|_| String::from("."));
-        PathBuf::from(home)
-            .join("Documents")
-            .join("StarCraft")
-            .join("Maps")
-            .join("Replays")
-            .join("LastReplay.rep")
+        windows_replay_dir().join("LastReplay.rep")
     } else {
-        let home = env::var_os("HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("."));
-        let user = env::var("USER").unwrap_or_else(|_| "default".to_string());
-        home.join(".wine-battlenet/drive_c/users")
-            .join(user)
-            .join("Documents/StarCraft/Maps/Replays/LastReplay.rep")
+        wine_replay_dir().join("LastReplay.rep")
     }
 }
 
@@ -123,19 +106,69 @@ pub fn default_log_dir() -> PathBuf {
 
 fn default_replay_library_root() -> PathBuf {
     if cfg!(target_os = "windows") {
-        let home = env::var("USERPROFILE").unwrap_or_else(|_| String::from("."));
-        PathBuf::from(home)
-            .join("Documents")
-            .join("StarCraft")
-            .join("Maps")
-            .join("Replays")
+        windows_replay_dir()
     } else {
-        let home = env::var_os("HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("."));
-        let user = env::var("USER").unwrap_or_else(|_| "default".to_string());
-        home.join(".wine-battlenet/drive_c/users")
-            .join(user)
-            .join("Documents/StarCraft/Maps/Replays")
+        wine_replay_dir()
+    }
+}
+
+fn windows_user_profile_dir() -> PathBuf {
+    env::var_os("USERPROFILE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+fn windows_replay_dir() -> PathBuf {
+    windows_user_profile_dir()
+        .join("Documents")
+        .join("StarCraft")
+        .join("Maps")
+        .join("Replays")
+}
+
+fn unix_home_dir() -> PathBuf {
+    env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+fn unix_user() -> String {
+    env::var("USER").unwrap_or_else(|_| DEFAULT_USER.to_string())
+}
+
+fn wine_user_root() -> PathBuf {
+    wine_user_root_from(unix_home_dir(), &unix_user())
+}
+
+fn wine_user_root_from(home_dir: PathBuf, user: &str) -> PathBuf {
+    home_dir.join(".wine-battlenet/drive_c/users").join(user)
+}
+
+fn wine_replay_dir() -> PathBuf {
+    wine_user_root().join("Documents/StarCraft/Maps/Replays")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wine_user_root_uses_expected_layout() {
+        let root = wine_user_root_from(PathBuf::from("/home/tester"), "sc_user");
+        assert_eq!(
+            root,
+            PathBuf::from("/home/tester/.wine-battlenet/drive_c/users/sc_user")
+        );
+    }
+
+    #[test]
+    fn wine_replay_dir_appends_replay_segments() {
+        let root = wine_user_root_from(PathBuf::from("/tmp/home"), "user");
+        assert_eq!(
+            root.join("Documents/StarCraft/Maps/Replays"),
+            PathBuf::from(
+                "/tmp/home/.wine-battlenet/drive_c/users/user/Documents/StarCraft/Maps/Replays"
+            )
+        );
     }
 }

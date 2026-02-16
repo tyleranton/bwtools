@@ -56,6 +56,7 @@ EOF
           buildInputs = [
             openssl
             pkg-config
+            rust-analyzer
             rust-bin.stable.latest.default
           ];
         };

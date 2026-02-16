@@ -276,17 +276,17 @@ fn detect_opponent(
             }
 
             let observed_ts = observed_at.timestamp();
-            if let Some(prev) = app.opponent.last_observed_at {
-                if observed_ts <= prev {
-                    tracing::debug!(
-                        opponent = %name,
-                        gateway = gw,
-                        observed_ts,
-                        prev,
-                        "stale opponent candidate ignored"
-                    );
-                    return Ok(result);
-                }
+            if let Some(prev) = app.opponent.last_observed_at
+                && observed_ts <= prev
+            {
+                tracing::debug!(
+                    opponent = %name,
+                    gateway = gw,
+                    observed_ts,
+                    prev,
+                    "stale opponent candidate ignored"
+                );
+                return Ok(result);
             }
 
             let identity = (name.clone(), gw);

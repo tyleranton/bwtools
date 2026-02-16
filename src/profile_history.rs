@@ -209,3 +209,71 @@ impl ProfileHistoryService {
             .unwrap_or(false)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn unique_test_path(name: &str) -> PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default();
+        std::env::temp_dir().join(format!("bwtools-{name}-{nanos}.json"))
+    }
+
+    #[test]
+    fn profile_history_key_normalizes_name() {
+        let key = ProfileHistoryKey::new("Alice", 10);
+        assert_eq!(key.storage_key(), "alice#10");
+    }
+
+    #[test]
+    fn match_outcome_classifiers_are_consistent() {
+        assert!(MatchOutcome::Win.is_win());
+        assert!(!MatchOutcome::Loss.is_win());
+        assert!(MatchOutcome::SelfDodged.is_self_dodged());
+        assert!(MatchOutcome::OpponentDodged.is_opponent_dodged());
+        assert!(MatchOutcome::Win.counts_for_record());
+        assert!(!MatchOutcome::SelfDodged.counts_for_record());
+    }
+
+    #[test]
+    fn merge_matches_updates_missing_races_without_duplicate_entries() {
+        let path = unique_test_path("merge");
+        let mut service = ProfileHistoryService::empty(path.clone());
+        let key = ProfileHistoryKey::new("Alice", 10);
+
+        service
+            .upsert_match(
+                &key,
+                StoredMatch {
+                    timestamp: 100,
+                    opponent: "Bob".to_string(),
+                    opponent_race: None,
+                    main_race: None,
+                    result: MatchOutcome::Win,
+                },
+            )
+            .expect("seed base match");
+
+        let merged = service
+            .merge_matches(
+                &key,
+                vec![StoredMatch {
+                    timestamp: 100,
+                    opponent: "bob".to_string(),
+                    opponent_race: Some("Terran".to_string()),
+                    main_race: Some("Protoss".to_string()),
+                    result: MatchOutcome::Win,
+                }],
+            )
+            .expect("merge history");
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].opponent_race.as_deref(), Some("Terran"));
+        assert_eq!(merged[0].main_race.as_deref(), Some("Protoss"));
+
+        let _ = std::fs::remove_file(path);
+    }
+}

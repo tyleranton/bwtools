@@ -104,7 +104,6 @@ impl CacheReader {
         Ok(latest)
     }
 
-    #[allow(clippy::collapsible_if)]
     pub fn latest_opponent_profile(
         &mut self,
         exclude_name: Option<&str>,
@@ -133,10 +132,10 @@ impl CacheReader {
                     return None;
                 }
                 let (profile, gateway) = parse_profile_from_url_mmgameloading(&key)?;
-                if let Some(ex) = exclude_name {
-                    if profile.eq_ignore_ascii_case(ex) {
-                        return None;
-                    }
+                if let Some(ex) = exclude_name
+                    && profile.eq_ignore_ascii_case(ex)
+                {
+                    return None;
                 }
                 Some(((profile, gateway), last_used))
             })
