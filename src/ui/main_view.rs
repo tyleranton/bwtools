@@ -74,12 +74,8 @@ pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app:
             .find(|(t, _, _)| t.eq_ignore_ascii_case(name))
             .map(|(_, _, r)| *r);
         let race_opt = app.opponent.race.as_deref();
-        let header = crate::ui::display::opponent_header(
-            name,
-            crate::api::gateway_label(gw),
-            race_opt,
-            rating,
-        );
+        let header =
+            crate::ui::display::opponent_header(name, crate::gateway::label(gw), race_opt, rating);
         opponent_profile_lines.push(Line::from(Span::styled(
             header,
             Style::default()
@@ -140,7 +136,7 @@ pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app:
                 .filter(|(t, _, _)| !t.eq_ignore_ascii_case(name))
             {
                 other_toons_lines.push(Line::from(Span::styled(
-                    crate::ui::display::toon_line(toon, crate::api::gateway_label(*gw2), *r),
+                    crate::ui::display::toon_line(toon, crate::gateway::label(*gw2), *r),
                     Style::default().fg(Color::Gray),
                 )));
             }
@@ -164,7 +160,7 @@ pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app:
         )));
         for (toon, gw2, r) in app.opponent.toons_data.iter() {
             other_toons_lines.push(Line::from(Span::styled(
-                crate::ui::display::toon_line(toon, crate::api::gateway_label(*gw2), *r),
+                crate::ui::display::toon_line(toon, crate::gateway::label(*gw2), *r),
                 Style::default().fg(Color::Gray),
             )));
         }

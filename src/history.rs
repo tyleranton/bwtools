@@ -13,6 +13,30 @@ pub struct OpponentRecord {
     pub last_match_ts: Option<u64>,
 }
 
+impl OpponentRecord {
+    pub fn new(name: impl Into<String>, gateway: u16) -> Self {
+        Self {
+            name: name.into(),
+            gateway,
+            ..Self::default()
+        }
+    }
+
+    pub fn apply_race_observation(&mut self, incoming: &str) {
+        if crate::race::should_replace(self.race.as_deref(), incoming) {
+            self.race = Some(crate::race::normalize_label(incoming));
+        }
+    }
+
+    pub fn set_race_if_unknown(&mut self, incoming: Option<&str>) {
+        if self.race.is_none()
+            && let Some(race) = incoming
+        {
+            self.race = Some(crate::race::normalize_label(race));
+        }
+    }
+}
+
 pub type OpponentHistory = std::collections::HashMap<String, OpponentRecord>;
 
 pub trait HistorySource {

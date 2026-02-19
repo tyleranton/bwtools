@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 use anyhow::{Result, anyhow};
 use bw_web_api_rs::models::aurora_profile::{ScrMmGameLoading, ScrProfile, ScrToonInfo};
 use bw_web_api_rs::models::matchmaker_player_info::MatchmakerPlayerInfo;
-use bw_web_api_rs::{ApiClient, ApiConfig, types::Gateway};
+use bw_web_api_rs::{ApiClient, ApiConfig};
 
 use crate::history::OpponentRecord;
 use crate::profile_history::{MatchOutcome, ProfileHistoryKey, ProfileHistoryService, StoredMatch};
@@ -23,7 +23,8 @@ impl ApiHandle {
     }
 
     pub fn get_toon_info(&self, name: &str, gw_num: u16) -> Result<ScrToonInfo> {
-        let gw = map_gateway(gw_num).ok_or_else(|| anyhow!("Unknown gateway: {}", gw_num))?;
+        let gw = crate::gateway::map_gateway(gw_num)
+            .ok_or_else(|| anyhow!("Unknown gateway: {}", gw_num))?;
         let fut = self
             .client
             .get_aurora_profile_by_toon_toon_info(name.to_string(), gw);
@@ -32,7 +33,8 @@ impl ApiHandle {
     }
 
     pub fn get_mm_game_loading(&self, name: &str, gw_num: u16) -> Result<ScrMmGameLoading> {
-        let gw = map_gateway(gw_num).ok_or_else(|| anyhow!("Unknown gateway: {}", gw_num))?;
+        let gw = crate::gateway::map_gateway(gw_num)
+            .ok_or_else(|| anyhow!("Unknown gateway: {}", gw_num))?;
         let fut = self
             .client
             .get_aurora_profile_by_toon_mm_game_loading(name.to_string(), gw);
@@ -89,7 +91,8 @@ impl ApiHandle {
     }
 
     pub fn get_scr_profile(&self, name: &str, gw_num: u16) -> Result<ScrProfile> {
-        let gw = map_gateway(gw_num).ok_or_else(|| anyhow!("Unknown gateway: {}", gw_num))?;
+        let gw = crate::gateway::map_gateway(gw_num)
+            .ok_or_else(|| anyhow!("Unknown gateway: {}", gw_num))?;
         let fut = self
             .client
             .get_aurora_profile_by_toon_scr_profile(name.to_string(), gw);
@@ -143,7 +146,7 @@ impl ApiHandle {
                         record
                             .race
                             .as_deref()
-                            .map(|race| race.eq_ignore_ascii_case("random"))
+                            .map(crate::race::is_random)
                             .unwrap_or(false)
                     })
                     .map(|(name, _)| name.clone())
@@ -285,31 +288,12 @@ impl ApiHandle {
             }
         }
 
-        let main_label = |r: &str| match r {
-            "protoss" => "Protoss",
-            "terran" => "Terran",
-            "zerg" => "Zerg",
-            "random" => "Random",
-            _ => "Unknown",
-        };
-        let main_initial = |r: &str| match r {
-            "protoss" => "P",
-            "terran" => "T",
-            "zerg" => "Z",
-            "random" => "R",
-            _ => "?",
-        };
-        let opp_initial = |r: &str| match r {
-            "protoss" => "P",
-            "terran" => "T",
-            "zerg" => "Z",
-            "random" => "R",
-            _ => "?",
-        };
-
         let order = ["protoss", "terran", "zerg", "random"];
         let mut lines: Vec<String> = Vec::new();
-        let mr_init = main_race_lower.as_deref().map(main_initial).unwrap_or("?");
+        let mr_init = main_race_lower
+            .as_deref()
+            .map(crate::race::initial)
+            .unwrap_or("?");
         for r in order.iter() {
             if let Some((wins, total)) = matchup.get(*r)
                 && *total > 0
@@ -318,7 +302,7 @@ impl ApiHandle {
                 lines.push(format!(
                     "{}v{}: {:.0}% ({} / {})",
                     mr_init,
-                    opp_initial(r),
+                    crate::race::initial(r),
                     pct.round(),
                     wins,
                     total,
@@ -340,7 +324,7 @@ impl ApiHandle {
 
         let main_race_display = main_race_lower
             .as_deref()
-            .map(|race| main_label(race).to_string());
+            .map(|race| crate::race::display_label(race).to_string());
 
         (
             main_race_display,
@@ -384,47 +368,4 @@ fn runtime() -> Result<&'static tokio::runtime::Runtime> {
     runtime_result
         .as_ref()
         .map_err(|msg| anyhow!("failed to build global tokio runtime: {msg}"))
-}
-pub fn map_gateway(num: u16) -> Option<Gateway> {
-    match num {
-        10 => Some(Gateway::USWest),
-        11 => Some(Gateway::USEast),
-        20 => Some(Gateway::Europe),
-        30 => Some(Gateway::Korea),
-        45 => Some(Gateway::Asia),
-        _ => None,
-    }
-}
-
-pub fn gateway_label(num: u16) -> &'static str {
-    match num {
-        10 => "US West",
-        11 => "US East",
-        20 => "Europe",
-        30 => "Korea",
-        45 => "Asia",
-        _ => "Unknown",
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn gateway_mapping_and_labels_cover_known_values() {
-        assert_eq!(map_gateway(10), Some(Gateway::USWest));
-        assert_eq!(map_gateway(11), Some(Gateway::USEast));
-        assert_eq!(map_gateway(20), Some(Gateway::Europe));
-        assert_eq!(map_gateway(30), Some(Gateway::Korea));
-        assert_eq!(map_gateway(45), Some(Gateway::Asia));
-        assert_eq!(map_gateway(999), None);
-
-        assert_eq!(gateway_label(10), "US West");
-        assert_eq!(gateway_label(11), "US East");
-        assert_eq!(gateway_label(20), "Europe");
-        assert_eq!(gateway_label(30), "Korea");
-        assert_eq!(gateway_label(45), "Asia");
-        assert_eq!(gateway_label(999), "Unknown");
-    }
 }

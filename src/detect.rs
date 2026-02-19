@@ -117,7 +117,7 @@ struct OpponentOutcome {
     race: Option<String>,
     matchups: Vec<String>,
     last_identity: Option<(String, u16)>,
-    history_update: Option<OpponentHistoryUpdate>,
+    history_update: OpponentHistoryUpdate,
 }
 
 impl OpponentOutcome {
@@ -127,18 +127,26 @@ impl OpponentOutcome {
         cfg: &Config,
         history: Option<&HistoryService<FileHistorySource>>,
     ) {
-        app.opponent.name = Some(self.name.clone());
-        app.opponent.gateway = Some(self.gateway);
-        if let Some(id) = self.last_identity {
+        let Self {
+            name,
+            gateway,
+            toons,
+            race,
+            matchups,
+            last_identity,
+            history_update,
+        } = self;
+
+        app.opponent.name = Some(name);
+        app.opponent.gateway = Some(gateway);
+        if let Some(id) = last_identity {
             app.opponent.last_identity = Some(id);
         }
-        app.opponent.toons_data = self.toons;
-        app.opponent.race = self.race.clone();
-        app.opponent.matchups = self.matchups.clone();
+        app.opponent.toons_data = toons;
+        app.opponent.race = race;
+        app.opponent.matchups = matchups;
 
-        if let Some(update) = self.history_update {
-            update.apply(app, cfg, history);
-        }
+        history_update.apply(app, cfg, history);
     }
 }
 
@@ -197,7 +205,7 @@ fn detect_self_switch(
 
     match reader.latest_mmgameloading_profile(cfg.scan_window_secs) {
         Ok(Some((mm_name, mm_gw))) => {
-            let mm_key = mm_name.to_ascii_lowercase();
+            let mm_key = crate::race::lower_key(&mm_name);
             let is_own = app.self_profile.own_profiles.contains(&mm_key);
             let current_name = app.self_profile.name.as_deref().unwrap_or("<none>");
             let current_gateway = app.self_profile.gateway.unwrap_or(0);
@@ -381,7 +389,7 @@ fn build_history_update(
     opp_gw: u16,
     info: bw_web_api_rs::models::aurora_profile::ScrToonInfo,
     race_hint: Option<String>,
-) -> Option<OpponentHistoryUpdate> {
+) -> OpponentHistoryUpdate {
     let season = info.matchmaked_current_season;
     let profiles = info.profiles.as_deref().unwrap_or(&[]);
     let guid = profiles
@@ -396,22 +404,17 @@ fn build_history_update(
         });
     let rating = guid.and_then(|g| api.compute_rating_for_guid(&info, g));
 
-    let key = opp_name.to_ascii_lowercase();
+    let key = crate::race::lower_key(opp_name);
     let existing = app.opponent.history.get(&key);
 
     let mut wins = existing.map(|r| r.wins).unwrap_or(0);
     let mut losses = existing.map(|r| r.losses).unwrap_or(0);
     let mut last_match_ts = existing.and_then(|r| r.last_match_ts);
     let mut race = existing.and_then(|r| r.race.clone());
-    if let Some(ref hint) = race_hint {
-        let already_random = race
-            .as_ref()
-            .map(|r| r.eq_ignore_ascii_case("random"))
-            .unwrap_or(false);
-        let hint_is_random = hint.eq_ignore_ascii_case("random");
-        if race.is_none() || (hint_is_random && !already_random) {
-            race = Some(hint.clone());
-        }
+    if let Some(ref hint) = race_hint
+        && crate::race::should_replace(race.as_deref(), hint)
+    {
+        race = Some(crate::race::normalize_label(hint));
     }
     let previous_rating = existing.and_then(|r| r.current_rating);
 
@@ -426,12 +429,7 @@ fn build_history_update(
                 losses = l;
                 last_match_ts = ts;
                 if race.is_none() {
-                    race = race_opt.map(|s| match s.to_lowercase().as_str() {
-                        "protoss" => "Protoss".to_string(),
-                        "terran" => "Terran".to_string(),
-                        "zerg" => "Zerg".to_string(),
-                        _ => s,
-                    });
+                    race = race_opt.as_deref().map(crate::race::normalize_label);
                 }
             }
             Err(err) => tracing::error!(
@@ -441,7 +439,7 @@ fn build_history_update(
         }
     }
 
-    Some(OpponentHistoryUpdate {
+    OpponentHistoryUpdate {
         key,
         gateway: opp_gw,
         race,
@@ -450,7 +448,7 @@ fn build_history_update(
         losses,
         current_rating: rating,
         previous_rating,
-    })
+    }
 }
 
 struct OpponentHistoryUpdate {
@@ -471,20 +469,9 @@ impl OpponentHistoryUpdate {
         cfg: &Config,
         history: Option<&HistoryService<FileHistorySource>>,
     ) {
-        let entry = app
-            .opponent
-            .history
-            .entry(self.key)
-            .or_insert_with(|| OpponentRecord {
-                name: app.opponent.name.clone().unwrap_or_default(),
-                gateway: self.gateway,
-                race: None,
-                current_rating: None,
-                previous_rating: None,
-                wins: 0,
-                losses: 0,
-                last_match_ts: None,
-            });
+        let entry = app.opponent.history.entry(self.key).or_insert_with(|| {
+            OpponentRecord::new(app.opponent.name.clone().unwrap_or_default(), self.gateway)
+        });
 
         if let Some(name) = &app.opponent.name {
             entry.name = name.clone();
@@ -494,16 +481,7 @@ impl OpponentHistoryUpdate {
             entry.last_match_ts = Some(ts);
         }
         if let Some(new_race) = self.race.as_ref() {
-            let has_random = entry
-                .race
-                .as_ref()
-                .map(|r| r.eq_ignore_ascii_case("random"))
-                .unwrap_or(false);
-            let replace =
-                entry.race.is_none() || (new_race.eq_ignore_ascii_case("random") && !has_random);
-            if replace {
-                entry.race = Some(new_race.clone());
-            }
+            entry.apply_race_observation(new_race);
         }
         entry.previous_rating = self.previous_rating;
         entry.current_rating = self.current_rating;

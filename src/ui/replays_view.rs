@@ -15,7 +15,7 @@ pub fn render_replays(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
         if focus == target { "→ " } else { "  " }
     };
 
-    let gw_label = crate::api::gateway_label(app.replay.input_gateway);
+    let gw_label = crate::gateway::label(app.replay.input_gateway);
     let mut info_lines = vec![Line::from(Span::raw(
         "Ctrl+M Main  •  Ctrl+S Search  •  Enter Start Download",
     ))];
@@ -182,7 +182,7 @@ pub fn render_replays(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
                     .map(|alias| format!("{} ➜ ", alias))
                     .unwrap_or_default(),
                 req.toon,
-                crate::api::gateway_label(req.gateway),
+                crate::gateway::label(req.gateway),
                 req.matchup.clone().unwrap_or_else(|| "All".to_string())
             ),
             Style::default().fg(Color::Gray),

@@ -237,7 +237,7 @@ mod screp_watch {
         history: Option<&HistoryService<FileHistorySource>>,
         profile_history: &mut ProfileHistoryService,
     ) -> Result<(), ReplayError> {
-        let key = opp_name.to_ascii_lowercase();
+        let key = crate::race::lower_key(opp_name);
         let gateway = app.opponent.gateway.unwrap_or(0);
         let last_replay_ts = app.replay_watch.last_mtime.and_then(system_time_secs);
 
@@ -246,24 +246,13 @@ mod screp_watch {
                 .opponent
                 .history
                 .entry(key.clone())
-                .or_insert_with(|| OpponentRecord {
-                    name: opp_name.to_string(),
-                    gateway,
-                    race: None,
-                    current_rating: None,
-                    previous_rating: None,
-                    wins: 0,
-                    losses: 0,
-                    last_match_ts: None,
-                });
+                .or_insert_with(|| OpponentRecord::new(opp_name, gateway));
             entry.name = opp_name.to_string();
             entry.gateway = gateway;
             if let Some(ts) = last_replay_ts {
                 entry.last_match_ts = Some(ts);
             }
-            if entry.race.is_none() {
-                entry.race = opp_race.clone();
-            }
+            entry.set_race_if_unknown(opp_race.as_deref());
         }
 
         let mut history_update: Option<(u32, u32, Option<u64>, Option<String>)> = None;
@@ -401,14 +390,7 @@ mod screp_watch {
             if let Some(latest) = ts {
                 entry.last_match_ts = Some(latest);
             }
-            if entry.race.is_none() {
-                entry.race = race.map(|s| match s.to_lowercase().as_str() {
-                    "protoss" => "Protoss".to_string(),
-                    "terran" => "Terran".to_string(),
-                    "zerg" => "Zerg".to_string(),
-                    _ => s,
-                });
-            }
+            entry.set_race_if_unknown(race.as_deref());
         }
 
         if let Some(service) = history {

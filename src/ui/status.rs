@@ -22,7 +22,7 @@ pub fn render_status(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, ap
     };
     let self_line_opt = match (&app.self_profile.name, app.self_profile.gateway) {
         (Some(name), Some(gw)) => Some(Line::from(Span::styled(
-            format!("Self: {} • {}", name, crate::api::gateway_label(gw)),
+            format!("Self: {} • {}", name, crate::gateway::label(gw)),
             Style::default().fg(Color::Yellow),
         ))),
         (Some(name), None) => Some(Line::from(Span::styled(
