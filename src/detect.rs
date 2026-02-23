@@ -1,7 +1,7 @@
 use crate::app::App;
 use crate::cache::CacheReader;
 use crate::config::Config;
-use crate::history::{FileHistorySource, HistoryService, OpponentRecord, derive_wl_and_race};
+use crate::history::{derive_wl_and_race, FileHistorySource, HistoryService, OpponentRecord};
 use crate::overlay::{OverlayError, OverlayService};
 use thiserror::Error;
 
@@ -86,6 +86,13 @@ impl DetectionOutcome {
 
         if let Some(ts) = self.opponent_observed_at {
             app.opponent.last_observed_at = Some(ts);
+
+            if app.overlays.opponent_waiting && app.opponent.name.is_some() {
+                app.overlays.opponent_waiting = false;
+                if let Err(err) = OverlayService::write_opponent(cfg, app) {
+                    tracing::error!(error = %err, "failed to update opponent overlay");
+                }
+            }
         }
     }
 }
@@ -145,6 +152,8 @@ impl OpponentOutcome {
         app.opponent.toons_data = toons;
         app.opponent.race = race;
         app.opponent.matchups = matchups;
+
+        app.overlays.opponent_waiting = false;
 
         history_update.apply(app, cfg, history);
     }

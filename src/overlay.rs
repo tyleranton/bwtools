@@ -42,34 +42,34 @@ impl OverlayService {
         if !cfg.opponent_output_enabled {
             return Ok(());
         }
-        let name = match &app.opponent.name {
-            Some(n) => n.clone(),
-            None => {
-                return Ok(());
-            }
+
+        let text = if app.overlays.opponent_waiting || app.opponent.name.is_none() {
+            "Waiting for opponent...".to_string()
+        } else {
+            let name = app.opponent.name.clone().unwrap_or_default();
+            let race = app
+                .opponent
+                .race
+                .clone()
+                .unwrap_or_else(|| "Unknown".to_string());
+            let rating_opt = app
+                .opponent
+                .toons_data
+                .iter()
+                .find(|(t, _, _)| t.eq_ignore_ascii_case(&name))
+                .map(|(_, _, r)| *r);
+            let rating_text = rating_opt
+                .map(|r| r.to_string())
+                .unwrap_or_else(|| "N/A".to_string());
+            let wl_text = app
+                .opponent
+                .history
+                .get(&name.to_ascii_lowercase())
+                .filter(|rec| rec.wins + rec.losses > 0)
+                .map(|rec| format!(" • W-L {}-{}", rec.wins, rec.losses))
+                .unwrap_or_default();
+            format!("{} • {} • {}{}", name, race, rating_text, wl_text)
         };
-        let race = app
-            .opponent
-            .race
-            .clone()
-            .unwrap_or_else(|| "Unknown".to_string());
-        let rating_opt = app
-            .opponent
-            .toons_data
-            .iter()
-            .find(|(t, _, _)| t.eq_ignore_ascii_case(&name))
-            .map(|(_, _, r)| *r);
-        let rating_text = rating_opt
-            .map(|r| r.to_string())
-            .unwrap_or_else(|| "N/A".to_string());
-        let wl_text = app
-            .opponent
-            .history
-            .get(&name.to_ascii_lowercase())
-            .filter(|rec| rec.wins + rec.losses > 0)
-            .map(|rec| format!(" • W-L {}-{}", rec.wins, rec.losses))
-            .unwrap_or_default();
-        let text = format!("{} • {} • {}{}", name, race, rating_text, wl_text);
         write_if_changed(
             &cfg.opponent_output_path,
             &mut app.overlays.opponent_last_text,

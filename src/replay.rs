@@ -96,12 +96,12 @@ mod rating_retry {
 
 mod screp_watch {
     use super::{
-        ReplayError, ScrepOverview, classify_short_game_outcome, parse_screp_duration_seconds,
-        parse_screp_overview, system_time_secs,
+        classify_short_game_outcome, parse_screp_duration_seconds, parse_screp_overview,
+        system_time_secs, ReplayError, ScrepOverview,
     };
     use crate::app::{App, DodgeCandidate};
     use crate::config::Config;
-    use crate::history::{FileHistorySource, HistoryService, OpponentRecord, derive_wl_and_race};
+    use crate::history::{derive_wl_and_race, FileHistorySource, HistoryService, OpponentRecord};
     use crate::overlay::OverlayService;
     use crate::profile_history::{
         MatchOutcome, ProfileHistoryKey, ProfileHistoryService, StoredMatch,
@@ -149,6 +149,9 @@ mod screp_watch {
         history: Option<&HistoryService<FileHistorySource>>,
         profile_history: &mut ProfileHistoryService,
     ) -> Result<(), ReplayError> {
+        app.overlays.opponent_waiting = true;
+        OverlayService::write_opponent(cfg, app)?;
+
         let Some((winner, players, duration)) = load_latest_overview(cfg)? else {
             return Ok(());
         };

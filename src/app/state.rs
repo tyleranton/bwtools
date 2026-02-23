@@ -128,6 +128,7 @@ pub struct OpponentState {
 pub struct OverlayState {
     pub rating_last_text: Option<String>,
     pub opponent_last_text: Option<String>,
+    pub opponent_waiting: bool,
 }
 
 #[derive(Default)]
