@@ -17,7 +17,7 @@
 
         bwtoolsPackage = pkgs.rustPlatform.buildRustPackage {
           pname = "bwtools";
-          version = "0.4.2";
+          version = "0.4.3";
           src = ./.;
           cargoLock = {
             lockFile = ./Cargo.lock;
