@@ -1,4 +1,10 @@
 {
+  "1percent": [
+    {
+      "aurora_id": 18494896,
+      "battle_tag": "한국"
+    }
+  ],
   "815": [
     {
       "aurora_id": 42283872,
@@ -31,6 +37,18 @@
       "battle_tag": "llIIIlllIIl"
     }
   ],
+  "Aeternum": [
+    {
+      "aurora_id": 448862347,
+      "battle_tag": "Aeternum"
+    }
+  ],
+  "Aether": [
+    {
+      "aurora_id": 57272692,
+      "battle_tag": "Aether"
+    }
+  ],
   "Airfou": [
     {
       "aurora_id": 702028426,
@@ -43,10 +61,34 @@
       "battle_tag": "alen"
     }
   ],
+  "Alm": [
+    {
+      "aurora_id": 1956675,
+      "battle_tag": "Alm"
+    }
+  ],
   "Ample": [
     {
       "aurora_id": 11415776,
       "battle_tag": "뇌없냐태영아"
+    }
+  ],
+  "Anto": [
+    {
+      "aurora_id": 62983644,
+      "battle_tag": "Anto"
+    }
+  ],
+  "ArmadA": [
+    {
+      "aurora_id": 71057091,
+      "battle_tag": "ArmadA"
+    }
+  ],
+  "ArtOfTurtle": [
+    {
+      "aurora_id": 368354356,
+      "battle_tag": "ArtOfTurtle"
     }
   ],
   "Artosis": [
@@ -61,16 +103,20 @@
       "battle_tag": "왓다김병쑤"
     }
   ],
-  "BCM": [
+  "attentat": [
     {
-      "aurora_id": 31109493,
-      "battle_tag": "배창민"
+      "aurora_id": 378545222,
+      "battle_tag": "selver"
+    },
+    {
+      "aurora_id": 845239139,
+      "battle_tag": "IlIllIlllIll"
     }
   ],
-  "BTS": [
+  "Azhi": [
     {
-      "aurora_id": 14099535,
-      "battle_tag": "llllIllIIlI"
+      "aurora_id": 1661833,
+      "battle_tag": "Muramasa"
     }
   ],
   "BackHo": [
@@ -91,6 +137,12 @@
       "battle_tag": "베스킨"
     }
   ],
+  "BCM": [
+    {
+      "aurora_id": 31109493,
+      "battle_tag": "배창민"
+    }
+  ],
   "Best": [
     {
       "aurora_id": 15320242,
@@ -105,28 +157,42 @@
   ],
   "Bisu": [
     {
-      "aurora_id": 1409696313,
-      "battle_tag": "lIlIlIlIIIll"
+      "aurora_id": 18372718,
+      "battle_tag": "김택용"
     },
     {
       "aurora_id": 778296319,
       "battle_tag": "김택용"
+    },
+    {
+      "aurora_id": 1409696313,
+      "battle_tag": "lIlIlIlIIIll"
     }
   ],
   "Blade": [
+    {
+      "aurora_id": 18875340,
+      "battle_tag": "구구콘"
+    },
     {
       "aurora_id": 24020369,
       "battle_tag": "llllllllllll"
     },
     {
-      "aurora_id": 18875340,
-      "battle_tag": "구구콘"
+      "aurora_id": 792041952,
+      "battle_tag": "llllIllIlIll"
     }
   ],
   "BliSs": [
     {
       "aurora_id": 15132094,
       "battle_tag": "허유진"
+    }
+  ],
+  "BoA": [
+    {
+      "aurora_id": 369905452,
+      "battle_tag": "BoAWHITE"
     }
   ],
   "Bonyth": [
@@ -145,6 +211,16 @@
     {
       "aurora_id": 716478223,
       "battle_tag": "llllllllllll"
+    },
+    {
+      "aurora_id": 820013935,
+      "battle_tag": "llllllllllll"
+    }
+  ],
+  "BTS/True": [
+    {
+      "aurora_id": 14099535,
+      "battle_tag": "llllIllIIlI"
     }
   ],
   "Byul": [
@@ -163,6 +239,18 @@
       "battle_tag": "다이아디아"
     }
   ],
+  "cava": [
+    {
+      "aurora_id": 307734705,
+      "battle_tag": "Matgim"
+    }
+  ],
+  "CheeTech": [
+    {
+      "aurora_id": 459203562,
+      "battle_tag": "CheeTech"
+    }
+  ],
   "Cola": [
     {
       "aurora_id": 18731177,
@@ -175,7 +263,45 @@
       "battle_tag": "대전왕따"
     }
   ],
+  "cross": [
+    {
+      "aurora_id": 715973371,
+      "battle_tag": "aaaaaaaa"
+    },
+    {
+      "aurora_id": 808332841,
+      "battle_tag": "lIIIllIIlII"
+    }
+  ],
+  "crvt": [
+    {
+      "aurora_id": 105262970,
+      "battle_tag": "Zzyuk"
+    }
+  ],
+  "Cryoc": [
+    {
+      "aurora_id": 100160775,
+      "battle_tag": "Cryoc"
+    }
+  ],
+  "Dandy": [
+    {
+      "aurora_id": 368302397,
+      "battle_tag": "Dandy"
+    }
+  ],
+  "Dasu": [
+    {
+      "aurora_id": 702412531,
+      "battle_tag": "삼다수"
+    }
+  ],
   "DDasik": [
+    {
+      "aurora_id": 35208657,
+      "battle_tag": "치킨소주"
+    },
     {
       "aurora_id": 803688773,
       "battle_tag": "KyleKatarn20"
@@ -187,10 +313,34 @@
       "battle_tag": "치킨소주"
     }
   ],
+  "Dentarg": [
+    {
+      "aurora_id": 859911,
+      "battle_tag": "Dentarg7"
+    }
+  ],
+  "DeSka": [
+    {
+      "aurora_id": 801705105,
+      "battle_tag": "korrz"
+    }
+  ],
   "Dewalt": [
     {
       "aurora_id": 455547635,
       "battle_tag": "Dewalt"
+    }
+  ],
+  "dex": [
+    {
+      "aurora_id": 1794270,
+      "battle_tag": "dex"
+    }
+  ],
+  "Dienmax": [
+    {
+      "aurora_id": 371612759,
+      "battle_tag": "Dienmax"
     }
   ],
   "Disco": [
@@ -199,16 +349,90 @@
       "battle_tag": "디스코"
     }
   ],
+  "Doodle": [
+    {
+      "aurora_id": 56439155,
+      "battle_tag": "DoodleDoodle"
+    }
+  ],
+  "DragOn": [
+    {
+      "aurora_id": 56440088,
+      "battle_tag": "DragOn"
+    }
+  ],
+  "Dronie": [
+    {
+      "aurora_id": 368240390,
+      "battle_tag": "BouncyBear"
+    }
+  ],
+  "dxtr13": [
+    {
+      "aurora_id": 436561539,
+      "battle_tag": "dxtr13"
+    }
+  ],
+  "earob": [
+    {
+      "aurora_id": 451650994,
+      "battle_tag": "earob"
+    }
+  ],
   "Effort": [
     {
       "aurora_id": 18514263,
       "battle_tag": "진화중"
     }
   ],
+  "eonzerg": [
+    {
+      "aurora_id": 140772450,
+      "battle_tag": "Eonzerg"
+    }
+  ],
+  "Exit": [
+    {
+      "aurora_id": 50595906,
+      "battle_tag": "ExitBW"
+    }
+  ],
   "Famas2": [
     {
       "aurora_id": 40703416,
       "battle_tag": "나는야파마스"
+    }
+  ],
+  "Fantasy": [
+    {
+      "aurora_id": 14744039,
+      "battle_tag": "FanTaSy"
+    },
+    {
+      "aurora_id": 19619537,
+      "battle_tag": "lIllllllllll"
+    }
+  ],
+  "FantaSy": [
+    {
+      "aurora_id": 14744039,
+      "battle_tag": "FanTaSy"
+    },
+    {
+      "aurora_id": 19619537,
+      "battle_tag": "lIllllllllll"
+    }
+  ],
+  "father": [
+    {
+      "aurora_id": 302472522,
+      "battle_tag": "father"
+    }
+  ],
+  "Fear": [
+    {
+      "aurora_id": 121760793,
+      "battle_tag": "Fearkemet"
     }
   ],
   "Fengzi": [
@@ -223,10 +447,32 @@
       "battle_tag": "브라끄"
     }
   ],
+  "FirstLaw": [
+    {
+      "aurora_id": 858431528,
+      "battle_tag": "SilentStorm"
+    }
+  ],
+  "fischei": [
+    {
+      "aurora_id": 456808233,
+      "battle_tag": "fischei"
+    }
+  ],
   "FlaSh": [
+    {
+      "aurora_id": 18505773,
+      "battle_tag": "flash"
+    },
     {
       "aurora_id": 1416123498,
       "battle_tag": "척살"
+    }
+  ],
+  "forGG": [
+    {
+      "aurora_id": 702076428,
+      "battle_tag": "forgg"
     }
   ],
   "Free": [
@@ -241,20 +487,120 @@
       "battle_tag": "수샘쓰"
     }
   ],
+  "gabagoon": [
+    {
+      "aurora_id": 71045221,
+      "battle_tag": "Godoflig"
+    }
+  ],
+  "gamvit": [
+    {
+      "aurora_id": 30513090,
+      "battle_tag": "군대간다"
+    }
+  ],
+  "ggaemo": [
+    {
+      "aurora_id": 14751269,
+      "battle_tag": "사랑애"
+    }
+  ],
+  "GoKu": [
+    {
+      "aurora_id": 361395383,
+      "battle_tag": "llllllllllxD"
+    }
+  ],
+  "Goose": [
+    {
+      "aurora_id": 1670567,
+      "battle_tag": "Gooseheaded"
+    }
+  ],
+  "Gosudark": [
+    {
+      "aurora_id": 68233605,
+      "battle_tag": "Gosudark"
+    },
+    {
+      "aurora_id": 985884673,
+      "battle_tag": "Gosudark"
+    }
+  ],
+  "Grast": [
+    {
+      "aurora_id": 100159072,
+      "battle_tag": "Grast"
+    }
+  ],
+  "grimeboss": [
+    {
+      "aurora_id": 459069494,
+      "battle_tag": "GRIMEBOSS"
+    }
+  ],
   "Gunwook": [
     {
       "aurora_id": 41016813,
       "battle_tag": "SongBale"
     }
   ],
-  "HBQ": [
+  "gypsy": [
     {
-      "aurora_id": 40939014,
-      "battle_tag": "구미호"
-    },
+      "aurora_id": 470593,
+      "battle_tag": "gypsy"
+    }
+  ],
+  "Gypsy": [
+    {
+      "aurora_id": 470593,
+      "battle_tag": "gypsy"
+    }
+  ],
+  "hardi": [
+    {
+      "aurora_id": 456265737,
+      "battle_tag": "Rado1"
+    }
+  ],
+  "Havior": [
+    {
+      "aurora_id": 108574393,
+      "battle_tag": "Havi"
+    }
+  ],
+  "Hawk": [
+    {
+      "aurora_id": 845090318,
+      "battle_tag": "Hawk2"
+    }
+  ],
+  "HBQ": [
     {
       "aurora_id": 20009496,
       "battle_tag": "chipslan"
+    },
+    {
+      "aurora_id": 40939014,
+      "battle_tag": "구미호"
+    }
+  ],
+  "Hejek": [
+    {
+      "aurora_id": 107172658,
+      "battle_tag": "Hejek"
+    }
+  ],
+  "Herbmon": [
+    {
+      "aurora_id": 64152103,
+      "battle_tag": "Herbmon"
+    }
+  ],
+  "herO": [
+    {
+      "aurora_id": 15127308,
+      "battle_tag": "조일장"
     }
   ],
   "HiyA": [
@@ -275,10 +621,10 @@
       "battle_tag": "Hope"
     }
   ],
-  "HyuN": [
+  "hullabaloo": [
     {
-      "aurora_id": 18610231,
-      "battle_tag": "아조씨랑비밀친구"
+      "aurora_id": 113135637,
+      "battle_tag": "R8MVP"
     }
   ],
   "Hyuk": [
@@ -289,6 +635,12 @@
     {
       "aurora_id": 1423135470,
       "battle_tag": "공허의옻빛전차"
+    }
+  ],
+  "HyuN": [
+    {
+      "aurora_id": 18610231,
+      "battle_tag": "아조씨랑비밀친구"
     }
   ],
   "Iffy": [
@@ -303,6 +655,12 @@
       "battle_tag": "invade"
     }
   ],
+  "iopg": [
+    {
+      "aurora_id": 63065683,
+      "battle_tag": "iopq"
+    }
+  ],
   "Iris": [
     {
       "aurora_id": 14345768,
@@ -315,10 +673,50 @@
       "battle_tag": "Scenario"
     }
   ],
+  "izu": [
+    {
+      "aurora_id": 480937588,
+      "battle_tag": "iZuiEL"
+    }
+  ],
   "Jaedong": [
     {
       "aurora_id": 13968871,
       "battle_tag": "이제동"
+    }
+  ],
+  "Jaeyun": [
+    {
+      "aurora_id": 308189001,
+      "battle_tag": "Jaeyun"
+    },
+    {
+      "aurora_id": 381893883,
+      "battle_tag": "Zeal"
+    }
+  ],
+  "JDConan": [
+    {
+      "aurora_id": 364572381,
+      "battle_tag": "IIIllIIllIIl"
+    },
+    {
+      "aurora_id": 367476607,
+      "battle_tag": "Riquelme"
+    }
+  ],
+  "Jimin": [
+    {
+      "aurora_id": 368220750,
+      "battle_tag": "JiminSCR"
+    },
+    {
+      "aurora_id": 368360383,
+      "battle_tag": "Jiho"
+    },
+    {
+      "aurora_id": 846856294,
+      "battle_tag": "Chelada"
     }
   ],
   "Jiter": [
@@ -327,16 +725,80 @@
       "battle_tag": "llIllIIlIlII"
     }
   ],
+  "Julia": [
+    {
+      "aurora_id": 128045180,
+      "battle_tag": "aejong"
+    }
+  ],
+  "Jumperer": [
+    {
+      "aurora_id": 301487039,
+      "battle_tag": "TheJumper"
+    }
+  ],
+  "Justice": [
+    {
+      "aurora_id": 306483346,
+      "battle_tag": "Justice"
+    }
+  ],
   "JyJ": [
     {
       "aurora_id": 18372749,
       "battle_tag": "정영재"
     }
   ],
-  "KOp": [
+  "k1mura": [
     {
-      "aurora_id": 11204860,
-      "battle_tag": "시대조던"
+      "aurora_id": 105069929,
+      "battle_tag": "AlpineK2"
+    },
+    {
+      "aurora_id": 123302716,
+      "battle_tag": "lIlIlIl"
+    }
+  ],
+  "Kaido": [
+    {
+      "aurora_id": 803692490,
+      "battle_tag": "lllIllIllIIl"
+    }
+  ],
+  "Kame": [
+    {
+      "aurora_id": 329899,
+      "battle_tag": "GmC16"
+    }
+  ],
+  "Kante": [
+    {
+      "aurora_id": 1403502804,
+      "battle_tag": "Cheek"
+    }
+  ],
+  "Kare": [
+    {
+      "aurora_id": 1578395,
+      "battle_tag": "Kare"
+    }
+  ],
+  "keen": [
+    {
+      "aurora_id": 308794566,
+      "battle_tag": "littlechava"
+    }
+  ],
+  "Khrane": [
+    {
+      "aurora_id": 55229970,
+      "battle_tag": "Khrane"
+    }
+  ],
+  "Kik0": [
+    {
+      "aurora_id": 105278572,
+      "battle_tag": "Xagec"
     }
   ],
   "Killer": [
@@ -345,10 +807,52 @@
       "battle_tag": "파리하아마리"
     }
   ],
+  "kimSangSoo": [
+    {
+      "aurora_id": 20409285,
+      "battle_tag": "widowmaker"
+    }
+  ],
+  "Klauso": [
+    {
+      "aurora_id": 495138300,
+      "battle_tag": "Klauso"
+    }
+  ],
+  "KOp": [
+    {
+      "aurora_id": 11204860,
+      "battle_tag": "시대조던"
+    }
+  ],
+  "KwarK": [
+    {
+      "aurora_id": 827225527,
+      "battle_tag": "aaa"
+    }
+  ],
+  "Kyrie": [
+    {
+      "aurora_id": 41283057,
+      "battle_tag": "kyrie96"
+    }
+  ],
+  "lancerx": [
+    {
+      "aurora_id": 441008742,
+      "battle_tag": "Lancerx"
+    }
+  ],
   "Larva": [
     {
       "aurora_id": 11682563,
       "battle_tag": "lllIlllIlll"
+    }
+  ],
+  "Launch": [
+    {
+      "aurora_id": 368081469,
+      "battle_tag": "Launch"
     }
   ],
   "Leta": [
@@ -359,8 +863,52 @@
   ],
   "Light": [
     {
+      "aurora_id": 10287223,
+      "battle_tag": "NAMO40"
+    },
+    {
       "aurora_id": 14926205,
       "battle_tag": "미친고양이"
+    }
+  ],
+  "LML": [
+    {
+      "aurora_id": 22869,
+      "battle_tag": "LML"
+    }
+  ],
+  "Lovesnow": [
+    {
+      "aurora_id": 77408081,
+      "battle_tag": "Kygo"
+    }
+  ],
+  "Lure": [
+    {
+      "aurora_id": 456958293,
+      "battle_tag": "Lure"
+    }
+  ],
+  "Machine": [
+    {
+      "aurora_id": 55676363,
+      "battle_tag": "Machine"
+    },
+    {
+      "aurora_id": 388695872,
+      "battle_tag": "MachineUSA"
+    }
+  ],
+  "Madcow": [
+    {
+      "aurora_id": 349315282,
+      "battle_tag": "Madcow"
+    }
+  ],
+  "MadiNho": [
+    {
+      "aurora_id": 106522420,
+      "battle_tag": "MadiNho"
     }
   ],
   "MansaeGi": [
@@ -369,10 +917,34 @@
       "battle_tag": "만새기"
     }
   ],
+  "mAth": [
+    {
+      "aurora_id": 106503511,
+      "battle_tag": "sAviOr"
+    }
+  ],
   "Mayd": [
     {
       "aurora_id": 13721102,
       "battle_tag": "홍윽옥"
+    }
+  ],
+  "Mazur": [
+    {
+      "aurora_id": 441240279,
+      "battle_tag": "Murgen"
+    }
+  ],
+  "meinhold": [
+    {
+      "aurora_id": 101219570,
+      "battle_tag": "Leo"
+    }
+  ],
+  "MetodMan": [
+    {
+      "aurora_id": 451933985,
+      "battle_tag": "NtMetodMan"
     }
   ],
   "Midas": [
@@ -397,6 +969,10 @@
     {
       "aurora_id": 18590274,
       "battle_tag": "NiNaNo"
+    },
+    {
+      "aurora_id": 34526576,
+      "battle_tag": "Crossmax"
     }
   ],
   "Mini": [
@@ -411,10 +987,32 @@
       "battle_tag": "hdy"
     }
   ],
+  "mistrZZZ": [
+    {
+      "aurora_id": 337195381,
+      "battle_tag": "Bob"
+    }
+  ],
   "Mong": [
     {
       "aurora_id": 12351289,
       "battle_tag": "몽군"
+    }
+  ],
+  "MoolSo": [
+    {
+      "aurora_id": 21112814,
+      "battle_tag": "전제민"
+    }
+  ],
+  "Moonrai": [
+    {
+      "aurora_id": 822207340,
+      "battle_tag": "MoOnrai"
+    },
+    {
+      "aurora_id": 859173086,
+      "battle_tag": "IlIlIlllllIl"
     }
   ],
   "Motive": [
@@ -429,10 +1027,70 @@
       "battle_tag": "진무비"
     }
   ],
+  "MukJa": [
+    {
+      "aurora_id": 864056,
+      "battle_tag": "MukJa"
+    }
+  ],
+  "n0mad": [
+    {
+      "aurora_id": 816973726,
+      "battle_tag": "JjuShO"
+    }
+  ],
   "Nada": [
     {
       "aurora_id": 13822584,
       "battle_tag": "IIllllIIllIl"
+    }
+  ],
+  "Naka": [
+    {
+      "aurora_id": 56852720,
+      "battle_tag": "NakaSc2"
+    }
+  ],
+  "NalrA": [
+    {
+      "aurora_id": 10876368,
+      "battle_tag": "NalrA"
+    }
+  ],
+  "Napoleon": [
+    {
+      "aurora_id": 107546506,
+      "battle_tag": "Napoleon"
+    }
+  ],
+  "Naugrim": [
+    {
+      "aurora_id": 1499788,
+      "battle_tag": "Naugrim"
+    }
+  ],
+  "nemu": [
+    {
+      "aurora_id": 456707645,
+      "battle_tag": "NeMu"
+    }
+  ],
+  "Nesh": [
+    {
+      "aurora_id": 55697172,
+      "battle_tag": "Nesh"
+    }
+  ],
+  "NewOcean": [
+    {
+      "aurora_id": 1164549484,
+      "battle_tag": "NewOcean"
+    }
+  ],
+  "Nimrod": [
+    {
+      "aurora_id": 368438850,
+      "battle_tag": "Nimrod"
     }
   ],
   "Noble": [
@@ -447,10 +1105,22 @@
       "battle_tag": "Noel"
     }
   ],
+  "nOOB": [
+    {
+      "aurora_id": 12357306,
+      "battle_tag": "김범수"
+    }
+  ],
   "Noob13": [
     {
       "aurora_id": 701954393,
       "battle_tag": "kakao"
+    }
+  ],
+  "OctZerg": [
+    {
+      "aurora_id": 105219684,
+      "battle_tag": "OctZerg"
     }
   ],
   "Olympus": [
@@ -459,10 +1129,46 @@
       "battle_tag": "박재현"
     }
   ],
+  "onlymouse": [
+    {
+      "aurora_id": 105628533,
+      "battle_tag": "Gerboasesino"
+    }
+  ],
+  "onmyway": [
+    {
+      "aurora_id": 107285392,
+      "battle_tag": "Prometheus"
+    }
+  ],
+  "OyA": [
+    {
+      "aurora_id": 106148699,
+      "battle_tag": "Oya"
+    }
+  ],
+  "Oystein": [
+    {
+      "aurora_id": 105354187,
+      "battle_tag": "TheOyster"
+    }
+  ],
+  "pand0r": [
+    {
+      "aurora_id": 55754830,
+      "battle_tag": "flamingpanda"
+    }
+  ],
   "Paralyze": [
     {
       "aurora_id": 18374885,
       "battle_tag": "스타는내인생"
+    }
+  ],
+  "Philgood2day": [
+    {
+      "aurora_id": 470810626,
+      "battle_tag": "PhilGood2Day"
     }
   ],
   "Piano": [
@@ -477,10 +1183,22 @@
       "battle_tag": "류뚱"
     }
   ],
+  "Probert": [
+    {
+      "aurora_id": 456665441,
+      "battle_tag": "Probert"
+    }
+  ],
   "ProMise": [
     {
       "aurora_id": 41037753,
       "battle_tag": "구라미스"
+    }
+  ],
+  "Ptak": [
+    {
+      "aurora_id": 129113832,
+      "battle_tag": "IlIlllllIIIl"
     }
   ],
   "Pusan": [
@@ -501,26 +1219,94 @@
       "battle_tag": "와이파이"
     }
   ],
+  "Radley": [
+    {
+      "aurora_id": 884142,
+      "battle_tag": "Radley"
+    }
+  ],
   "Rain": [
     {
       "aurora_id": 18372652,
       "battle_tag": "Rain"
     }
   ],
-  "Rich": [
+  "Rancor": [
     {
-      "aurora_id": 1423897462,
-      "battle_tag": "근사한바지"
+      "aurora_id": 1378715,
+      "battle_tag": "Rancor"
+    }
+  ],
+  "RangeD": [
+    {
+      "aurora_id": 195708,
+      "battle_tag": "RaNgeD"
     },
+    {
+      "aurora_id": 872843370,
+      "battle_tag": "nog"
+    }
+  ],
+  "rasowy": [
+    {
+      "aurora_id": 105601115,
+      "battle_tag": "Rasowy"
+    },
+    {
+      "aurora_id": 404615685,
+      "battle_tag": "IIIllIIIlIlI"
+    }
+  ],
+  "RayReign": [
+    {
+      "aurora_id": 65041992,
+      "battle_tag": "RayReign"
+    }
+  ],
+  "Razz": [
+    {
+      "aurora_id": 56553049,
+      "battle_tag": "Razz"
+    }
+  ],
+  "remap": [
+    {
+      "aurora_id": 312312417,
+      "battle_tag": "remapthemind"
+    }
+  ],
+  "ret": [
+    {
+      "aurora_id": 456987490,
+      "battle_tag": "Ribery"
+    }
+  ],
+  "Rich": [
     {
       "aurora_id": 1400599318,
       "battle_tag": "llIIIlllIIIl"
+    },
+    {
+      "aurora_id": 1423897462,
+      "battle_tag": "근사한바지"
     }
   ],
   "RideSky": [
     {
       "aurora_id": 42633318,
       "battle_tag": "김호성"
+    }
+  ],
+  "River": [
+    {
+      "aurora_id": 1174012680,
+      "battle_tag": "Rixa"
+    }
+  ],
+  "ronee": [
+    {
+      "aurora_id": 1489664,
+      "battle_tag": "EST"
     }
   ],
   "RoyaL": [
@@ -539,6 +1325,16 @@
     {
       "aurora_id": 15005496,
       "battle_tag": "Rush"
+    },
+    {
+      "aurora_id": 778298207,
+      "battle_tag": "Rush"
+    }
+  ],
+  "ruskig": [
+    {
+      "aurora_id": 410236451,
+      "battle_tag": "rUSKIG"
     }
   ],
   "Saber": [
@@ -553,6 +1349,28 @@
       "battle_tag": "Sacsri"
     }
   ],
+  "Sai": [
+    {
+      "aurora_id": 18665802,
+      "battle_tag": "사이"
+    },
+    {
+      "aurora_id": 21027124,
+      "battle_tag": "메시"
+    }
+  ],
+  "Saiyan": [
+    {
+      "aurora_id": 55087072,
+      "battle_tag": "ArmedPenguin"
+    }
+  ],
+  "sataNik": [
+    {
+      "aurora_id": 131024937,
+      "battle_tag": "Darkness"
+    }
+  ],
   "Scan": [
     {
       "aurora_id": 41376348,
@@ -563,10 +1381,22 @@
       "battle_tag": "Saturn"
     }
   ],
+  "Scarlet": [
+    {
+      "aurora_id": 790743029,
+      "battle_tag": "Scarlet"
+    }
+  ],
   "Scene/Judge": [
     {
       "aurora_id": 23762169,
       "battle_tag": "Scene"
+    }
+  ],
+  "Schifter": [
+    {
+      "aurora_id": 368231533,
+      "battle_tag": "RatTrap"
     }
   ],
   "Sea": [
@@ -581,7 +1411,17 @@
       "battle_tag": "조기석"
     }
   ],
+  "Sheep": [
+    {
+      "aurora_id": 986383435,
+      "battle_tag": "Sheep"
+    }
+  ],
   "Shine": [
+    {
+      "aurora_id": 11900593,
+      "battle_tag": "김단비"
+    },
     {
       "aurora_id": 13474066,
       "battle_tag": "Shine"
@@ -591,6 +1431,16 @@
     {
       "aurora_id": 15183299,
       "battle_tag": "lilillll1ll"
+    },
+    {
+      "aurora_id": 1466133644,
+      "battle_tag": "ilililiiiili"
+    }
+  ],
+  "shinee": [
+    {
+      "aurora_id": 1466133644,
+      "battle_tag": "ilililiiiili"
     }
   ],
   "Shuttle": [
@@ -606,6 +1456,10 @@
     }
   ],
   "Sky": [
+    {
+      "aurora_id": 798458650,
+      "battle_tag": "IlIlIlllIIll"
+    },
     {
       "aurora_id": 1416774758,
       "battle_tag": "웨하스"
@@ -633,6 +1487,10 @@
     {
       "aurora_id": 14726310,
       "battle_tag": "sOO"
+    },
+    {
+      "aurora_id": 35501269,
+      "battle_tag": "EsCKaL"
     }
   ],
   "Soulkey": [
@@ -647,10 +1505,26 @@
       "battle_tag": "herO"
     }
   ],
+  "spx": [
+    {
+      "aurora_id": 105686080,
+      "battle_tag": "spx"
+    }
+  ],
   "Ss1nz": [
     {
       "aurora_id": 15995371,
       "battle_tag": "문스윙스"
+    }
+  ],
+  "sSak": [
+    {
+      "aurora_id": 18372656,
+      "battle_tag": "바코드"
+    },
+    {
+      "aurora_id": 41366410,
+      "battle_tag": "누구냐넌"
     }
   ],
   "SsaL": [
@@ -659,16 +1533,46 @@
       "battle_tag": "SsaL"
     }
   ],
+  "Sterling": [
+    {
+      "aurora_id": 70694718,
+      "battle_tag": "Sterling"
+    }
+  ],
+  "SteveJung": [
+    {
+      "aurora_id": 12167067,
+      "battle_tag": "IamSteve"
+    }
+  ],
   "Stork": [
     {
       "aurora_id": 10267282,
       "battle_tag": "송병구"
     }
   ],
+  "StRyKeR": [
+    {
+      "aurora_id": 2264640,
+      "battle_tag": "StRyKeR17"
+    }
+  ],
   "Stryker": [
     {
       "aurora_id": 2264640,
       "battle_tag": "StRyKeR17"
+    }
+  ],
+  "Supper": [
+    {
+      "aurora_id": 105216658,
+      "battle_tag": "Superrman"
+    }
+  ],
+  "Sva3": [
+    {
+      "aurora_id": 1498457,
+      "battle_tag": "Sva"
     }
   ],
   "Sziky": [
@@ -683,10 +1587,58 @@
       "battle_tag": "윤종현"
     }
   ],
+  "taptap": [
+    {
+      "aurora_id": 456881041,
+      "battle_tag": "taptap"
+    }
+  ],
+  "tarpman": [
+    {
+      "aurora_id": 1316491,
+      "battle_tag": "tarpman"
+    }
+  ],
+  "Tarson": [
+    {
+      "aurora_id": 866419,
+      "battle_tag": "Tarson"
+    }
+  ],
+  "Tasteless": [
+    {
+      "aurora_id": 55153313,
+      "battle_tag": "Tasteless"
+    }
+  ],
+  "Tech": [
+    {
+      "aurora_id": 302117876,
+      "battle_tag": "lllllIiIiIii"
+    }
+  ],
+  "TerrOR": [
+    {
+      "aurora_id": 92456277,
+      "battle_tag": "TerrOR"
+    }
+  ],
   "TheRock": [
     {
       "aurora_id": 18607481,
       "battle_tag": "돋크네"
+    }
+  ],
+  "Thrive": [
+    {
+      "aurora_id": 100023982,
+      "battle_tag": "Thrive"
+    }
+  ],
+  "Tim": [
+    {
+      "aurora_id": 66089417,
+      "battle_tag": "Tim"
     }
   ],
   "TimeisGold": [
@@ -701,10 +1653,82 @@
       "battle_tag": "경찰"
     }
   ],
+  "TousaN": [
+    {
+      "aurora_id": 352012211,
+      "battle_tag": "TousaN"
+    }
+  ],
+  "True": [
+    {
+      "aurora_id": 14099535,
+      "battle_tag": "llllIllIIlI"
+    }
+  ],
+  "Trutacz": [
+    {
+      "aurora_id": 481793690,
+      "battle_tag": "lllllIIII"
+    }
+  ],
+  "TT1": [
+    {
+      "aurora_id": 1413134,
+      "battle_tag": "TT1"
+    }
+  ],
   "Tyson": [
     {
       "aurora_id": 14192060,
       "battle_tag": "박수범"
+    }
+  ],
+  "UltrA": [
+    {
+      "aurora_id": 67855951,
+      "battle_tag": "ArenaUltrA"
+    }
+  ],
+  "Unco": [
+    {
+      "aurora_id": 1457789,
+      "battle_tag": "Unco"
+    }
+  ],
+  "uThermal": [
+    {
+      "aurora_id": 118865652,
+      "battle_tag": "Matt"
+    }
+  ],
+  "Valourrex": [
+    {
+      "aurora_id": 466599381,
+      "battle_tag": "U238"
+    }
+  ],
+  "WetWorm": [
+    {
+      "aurora_id": 871104276,
+      "battle_tag": "iliiiliiili"
+    }
+  ],
+  "Whip": [
+    {
+      "aurora_id": 368923334,
+      "battle_tag": "Whipp"
+    }
+  ],
+  "WhistleR": [
+    {
+      "aurora_id": 122991372,
+      "battle_tag": "WhistlerR"
+    }
+  ],
+  "WhiteRa": [
+    {
+      "aurora_id": 105170345,
+      "battle_tag": "WhiteRa"
     }
   ],
   "WhyManMC": [
@@ -713,64 +1737,22 @@
       "battle_tag": "llllIIIll"
     }
   ],
-  "XuanXuan": [
+  "Wizard": [
     {
-      "aurora_id": 43286826,
-      "battle_tag": "轩轩"
+      "aurora_id": 803436489,
+      "battle_tag": "kimjefry1234"
     }
   ],
-  "YSC": [
+  "WolFix": [
     {
-      "aurora_id": 18365366,
-      "battle_tag": "윤수철"
+      "aurora_id": 236785,
+      "battle_tag": "WolF"
     }
   ],
-  "Yoon": [
+  "WorsT": [
     {
-      "aurora_id": 1424651593,
-      "battle_tag": "yoon"
-    }
-  ],
-  "ZeLoT": [
-    {
-      "aurora_id": 14634034,
-      "battle_tag": "서문지훈"
-    }
-  ],
-  "ggaemo": [
-    {
-      "aurora_id": 14751269,
-      "battle_tag": "사랑애"
-    }
-  ],
-  "herO": [
-    {
-      "aurora_id": 15127308,
-      "battle_tag": "조일장"
-    }
-  ],
-  "kimSangSoo": [
-    {
-      "aurora_id": 20409285,
-      "battle_tag": "widowmaker"
-    }
-  ],
-  "nOOB": [
-    {
-      "aurora_id": 12357306,
-      "battle_tag": "김범수"
-    }
-  ],
-  "sSak": [
-    {
-      "aurora_id": 18372656,
-      "battle_tag": "바코드"
-    }
-  ],
-  "shinee": [
-    {
-      "aurora_id": 1466133644,
-      "battle_tag": "ilililiiiili"
+      "aurora_id": 431299094,
+      "battle_tag": "WorsT"
     }
   ],
   "xiaoshuai": [
@@ -779,10 +1761,26 @@
       "battle_tag": "小帅"
     }
   ],
+  "XuanXuan": [
+    {
+      "aurora_id": 43286826,
+      "battle_tag": "轩轩"
+    }
+  ],
   "yabsab": [
     {
       "aurora_id": 40860205,
       "battle_tag": "unyeong"
+    }
+  ],
+  "Yoon": [
+    {
+      "aurora_id": 392545949,
+      "battle_tag": "ùñķñØŵņ"
+    },
+    {
+      "aurora_id": 1424651593,
+      "battle_tag": "yoon"
     }
   ],
   "yoon": [
@@ -791,10 +1789,34 @@
       "battle_tag": "ùñķñØŵņ"
     }
   ],
+  "YSC": [
+    {
+      "aurora_id": 18365366,
+      "battle_tag": "윤수철"
+    }
+  ],
+  "Zazu": [
+    {
+      "aurora_id": 890507,
+      "battle_tag": "Zazu"
+    }
+  ],
+  "ZeLoT": [
+    {
+      "aurora_id": 14634034,
+      "battle_tag": "서문지훈"
+    }
+  ],
   "zhanhun": [
     {
       "aurora_id": 702508213,
       "battle_tag": "战魂"
+    }
+  ],
+  "ZZZero": [
+    {
+      "aurora_id": 105470259,
+      "battle_tag": "DiDeK"
     }
   ]
 }

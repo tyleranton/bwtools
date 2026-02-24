@@ -1,5 +1,7 @@
 use crate::app::App;
 use crate::config::Config;
+use crate::history::aggregate_record_for_aurora_id;
+use crate::player_list::display_name_for_opponent;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 use thiserror::Error;
@@ -47,6 +49,8 @@ impl OverlayService {
             "Waiting for opponent...".to_string()
         } else {
             let name = app.opponent.name.clone().unwrap_or_default();
+            let display_name =
+                display_name_for_opponent(&app.known_players, app.opponent.aurora_id, &name);
             let race = app
                 .opponent
                 .race
@@ -61,14 +65,23 @@ impl OverlayService {
             let rating_text = rating_opt
                 .map(|r| r.to_string())
                 .unwrap_or_else(|| "N/A".to_string());
-            let wl_text = app
+            let known_id = app
                 .opponent
-                .history
-                .get(&name.to_ascii_lowercase())
-                .filter(|rec| rec.wins + rec.losses > 0)
-                .map(|rec| format!(" • W-L {}-{}", rec.wins, rec.losses))
-                .unwrap_or_default();
-            format!("{} • {} • {}{}", name, race, rating_text, wl_text)
+                .aurora_id
+                .filter(|id| app.known_players.contains_key(id));
+            let wl_text = if let Some(id) = known_id {
+                aggregate_record_for_aurora_id(&app.opponent.history, id)
+                    .map(|(wins, losses)| format!(" • W-L {}-{}", wins, losses))
+                    .unwrap_or_default()
+            } else {
+                app.opponent
+                    .history
+                    .get(&name.to_ascii_lowercase())
+                    .filter(|rec| rec.wins + rec.losses > 0)
+                    .map(|rec| format!(" • W-L {}-{}", rec.wins, rec.losses))
+                    .unwrap_or_default()
+            };
+            format!("{} • {} • {}{}", display_name, race, rating_text, wl_text)
         };
         write_if_changed(
             &cfg.opponent_output_path,

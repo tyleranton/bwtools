@@ -2,11 +2,11 @@ use std::io;
 
 use crossterm::cursor::{EnableBlinking, SetCursorStyle, Show};
 use crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use crossterm::{ExecutableCommand, execute};
-use ratatui::Terminal;
+use crossterm::{execute, ExecutableCommand};
 use ratatui::backend::CrosstermBackend;
+use ratatui::Terminal;
 
 pub fn setup_terminal() -> io::Result<Terminal<CrosstermBackend<io::Stdout>>> {
     enable_raw_mode()?;

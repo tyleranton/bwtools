@@ -252,6 +252,15 @@ mod screp_watch {
                 .or_insert_with(|| OpponentRecord::new(opp_name, gateway));
             entry.name = opp_name.to_string();
             entry.gateway = gateway;
+            if let Some(aurora_id) = app.opponent.aurora_id
+                && app
+                    .opponent
+                    .name
+                    .as_deref()
+                    .is_some_and(|name| name.eq_ignore_ascii_case(opp_name))
+            {
+                entry.aurora_id = Some(aurora_id);
+            }
             if let Some(ts) = last_replay_ts {
                 entry.last_match_ts = Some(ts);
             }

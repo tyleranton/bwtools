@@ -116,6 +116,7 @@ pub struct SelfProfileState {
 pub struct OpponentState {
     pub name: Option<String>,
     pub gateway: Option<u16>,
+    pub aurora_id: Option<u32>,
     pub toons_data: Vec<(String, u16, u32)>,
     pub last_identity: Option<(String, u16)>,
     pub last_observed_at: Option<i64>,
@@ -175,6 +176,7 @@ pub struct App {
     pub detection: DetectionState,
     pub self_profile: SelfProfileState,
     pub opponent: OpponentState,
+    pub known_players: HashMap<u32, String>,
     pub overlays: OverlayState,
     pub replay: ReplayState,
     pub replay_watch: ReplayWatchState,
@@ -191,6 +193,7 @@ impl App {
     pub fn reset_opponent_state(&mut self) {
         self.opponent.name = None;
         self.opponent.gateway = None;
+        self.opponent.aurora_id = None;
         self.opponent.toons_data.clear();
         self.opponent.last_identity = None;
         self.opponent.last_observed_at = None;
@@ -216,6 +219,7 @@ impl Default for App {
             detection: DetectionState::default(),
             self_profile: SelfProfileState::default(),
             opponent: OpponentState::default(),
+            known_players: HashMap::new(),
             overlays: OverlayState::default(),
             replay: ReplayState::default(),
             replay_watch: ReplayWatchState::default(),

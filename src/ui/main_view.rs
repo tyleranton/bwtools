@@ -4,6 +4,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::App;
+use crate::history::aggregate_record_for_aurora_id;
+use crate::player_list::display_name_for_opponent;
 use crate::ui::profile_stats::profile_stat_lines;
 
 pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app: &mut App) {
@@ -74,8 +76,14 @@ pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app:
             .find(|(t, _, _)| t.eq_ignore_ascii_case(name))
             .map(|(_, _, r)| *r);
         let race_opt = app.opponent.race.as_deref();
-        let header =
-            crate::ui::display::opponent_header(name, crate::gateway::label(gw), race_opt, rating);
+        let display_name =
+            display_name_for_opponent(&app.known_players, app.opponent.aurora_id, name);
+        let header = crate::ui::display::opponent_header(
+            &display_name,
+            crate::gateway::label(gw),
+            race_opt,
+            rating,
+        );
         opponent_profile_lines.push(Line::from(Span::styled(
             header,
             Style::default()
@@ -83,7 +91,24 @@ pub fn render_main(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, app:
                 .add_modifier(Modifier::BOLD),
         )));
 
-        if let Some(rec) = app.opponent.history.get(&name.to_ascii_lowercase())
+        let known_id = app
+            .opponent
+            .aurora_id
+            .filter(|id| app.known_players.contains_key(id));
+        if let Some(id) = known_id {
+            if let Some((wins, losses)) = aggregate_record_for_aurora_id(&app.opponent.history, id)
+            {
+                opponent_profile_lines.push(Line::from(vec![
+                    Span::styled(
+                        "Record: ",
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw(format!("{}-{}", wins, losses)),
+                ]));
+            }
+        } else if let Some(rec) = app.opponent.history.get(&name.to_ascii_lowercase())
             && rec.wins + rec.losses > 0
         {
             opponent_profile_lines.push(Line::from(vec![

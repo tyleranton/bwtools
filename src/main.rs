@@ -8,6 +8,7 @@ mod gateway;
 mod history;
 mod interaction;
 mod overlay;
+mod player_list;
 mod profile;
 mod profile_history;
 mod race;

@@ -12,7 +12,11 @@ pub fn render_replays(frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
         .split(area);
 
     let focus_indicator = |focus: ReplayFocus, target: ReplayFocus| {
-        if focus == target { "→ " } else { "  " }
+        if focus == target {
+            "→ "
+        } else {
+            "  "
+        }
     };
 
     let gw_label = crate::gateway::label(app.replay.input_gateway);

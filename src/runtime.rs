@@ -1,9 +1,10 @@
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
+use ratatui::Terminal;
 
 use crate::app::{App, View};
 use crate::cache::CacheReader;
@@ -110,6 +111,8 @@ impl AppRuntime {
             }
         }
         self.history = Some(history);
+
+        self.app.known_players = load_known_players_from_cfg(&self.cfg);
 
         self.app.detection.screp_available =
             which(&self.cfg.screp_cmd).is_ok() && Path::new(&self.cfg.last_replay_path).exists();
@@ -258,6 +261,38 @@ where
     E: std::fmt::Display + std::fmt::Debug,
 {
     app.status.last_profile_text = some_text(prefix, err);
+}
+
+fn load_known_players_from_cfg(cfg: &Config) -> HashMap<u32, String> {
+    let primary = cfg.player_list_path.clone();
+    let candidate = if primary.exists() {
+        Some(primary)
+    } else {
+        let alt = std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join("player_list.json");
+        if alt.exists() {
+            Some(alt)
+        } else {
+            None
+        }
+    };
+
+    if let Some(path) = candidate {
+        match crate::player_list::load_known_players(&path) {
+            Ok(players) => {
+                tracing::info!(count = players.len(), path = %path.display(), "loaded player list");
+                return players;
+            }
+            Err(err) => {
+                tracing::error!(error = %err, path = %path.display(), "failed to load player list");
+            }
+        }
+    } else {
+        tracing::info!("player list not found; known players disabled");
+    }
+
+    HashMap::new()
 }
 
 fn handle_key_event(app: &mut App, key: KeyEvent) {

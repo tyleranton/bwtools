@@ -21,6 +21,7 @@ pub struct Config {
     pub replay_settle: Duration,
     pub opponent_output_enabled: bool,
     pub opponent_output_path: PathBuf,
+    pub player_list_path: PathBuf,
     pub rating_retry_max: u8,
     pub rating_retry_interval: Duration,
     pub replay_library_root: PathBuf,
@@ -44,6 +45,7 @@ impl Default for Config {
             replay_settle: Duration::from_millis(500),
             opponent_output_enabled: true,
             opponent_output_path: default_opponent_output_path(),
+            player_list_path: default_player_list_path(),
             rating_retry_max: 3,
             rating_retry_interval: Duration::from_millis(500),
             replay_library_root: default_replay_library_root(),
@@ -89,6 +91,10 @@ fn default_screp_cmd() -> String {
 
 fn default_opponent_output_path() -> PathBuf {
     bundle_root().join("overlay").join("opponent_info.txt")
+}
+
+fn default_player_list_path() -> PathBuf {
+    bundle_root().join("player_list.json")
 }
 
 fn bundle_root() -> PathBuf {

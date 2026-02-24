@@ -120,6 +120,7 @@ impl SelfProfileSwitch {
 struct OpponentOutcome {
     name: String,
     gateway: u16,
+    aurora_id: Option<u32>,
     toons: Vec<(String, u16, u32)>,
     race: Option<String>,
     matchups: Vec<String>,
@@ -137,6 +138,7 @@ impl OpponentOutcome {
         let Self {
             name,
             gateway,
+            aurora_id,
             toons,
             race,
             matchups,
@@ -146,6 +148,7 @@ impl OpponentOutcome {
 
         app.opponent.name = Some(name);
         app.opponent.gateway = Some(gateway);
+        app.opponent.aurora_id = aurora_id;
         if let Some(id) = last_identity {
             app.opponent.last_identity = Some(id);
         }
@@ -379,10 +382,12 @@ fn build_opponent_outcome(
         Ok(info) => build_history_update(app, api, opp_name, opp_gw, info, race.clone()),
         Err(err) => return Err(DetectionError::Api(err)),
     };
+    let aurora_id = history_update.aurora_id;
 
     Ok(OpponentOutcome {
         name: opp_name.to_string(),
         gateway: opp_gw,
+        aurora_id,
         toons,
         race,
         matchups,
@@ -399,6 +404,11 @@ fn build_history_update(
     info: bw_web_api_rs::models::aurora_profile::ScrToonInfo,
     race_hint: Option<String>,
 ) -> OpponentHistoryUpdate {
+    let aurora_id = if info.aurora_id > 0 {
+        Some(info.aurora_id)
+    } else {
+        None
+    };
     let season = info.matchmaked_current_season;
     let profiles = info.profiles.as_deref().unwrap_or(&[]);
     let guid = profiles
@@ -451,6 +461,7 @@ fn build_history_update(
     OpponentHistoryUpdate {
         key,
         gateway: opp_gw,
+        aurora_id,
         race,
         last_match_ts,
         wins,
@@ -463,6 +474,7 @@ fn build_history_update(
 struct OpponentHistoryUpdate {
     key: String,
     gateway: u16,
+    aurora_id: Option<u32>,
     race: Option<String>,
     last_match_ts: Option<u64>,
     wins: u32,
@@ -486,6 +498,9 @@ impl OpponentHistoryUpdate {
             entry.name = name.clone();
         }
         entry.gateway = self.gateway;
+        if let Some(aurora_id) = self.aurora_id {
+            entry.aurora_id = Some(aurora_id);
+        }
         if let Some(ts) = self.last_match_ts {
             entry.last_match_ts = Some(ts);
         }

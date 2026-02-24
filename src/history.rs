@@ -1,10 +1,12 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct OpponentRecord {
     pub name: String,
     pub gateway: u16,
+    #[serde(default)]
+    pub aurora_id: Option<u32>,
     pub race: Option<String>,
     pub current_rating: Option<u32>,
     pub previous_rating: Option<u32>,
@@ -38,6 +40,25 @@ impl OpponentRecord {
 }
 
 pub type OpponentHistory = std::collections::HashMap<String, OpponentRecord>;
+
+pub fn aggregate_record_for_aurora_id(
+    hist: &OpponentHistory,
+    aurora_id: u32,
+) -> Option<(u32, u32)> {
+    let mut wins: u32 = 0;
+    let mut losses: u32 = 0;
+    for rec in hist.values() {
+        if rec.aurora_id == Some(aurora_id) {
+            wins = wins.saturating_add(rec.wins);
+            losses = losses.saturating_add(rec.losses);
+        }
+    }
+    if wins + losses > 0 {
+        Some((wins, losses))
+    } else {
+        None
+    }
+}
 
 pub trait HistorySource {
     fn load(&self) -> Result<OpponentHistory>;

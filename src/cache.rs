@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, anyhow};
-use chrome_cache_parser::ChromeCache;
+use anyhow::{anyhow, Context, Result};
 use chrome_cache_parser::block_file::{BlockFileCacheEntry, LazyBlockFileCacheEntry};
+use chrome_cache_parser::ChromeCache;
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use percent_encoding::percent_decode_str;
 use url::Url;
