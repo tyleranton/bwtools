@@ -3,7 +3,7 @@ use std::io;
 use std::path::Path;
 use std::process::Command;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use reqwest::blocking::Client;
 
 use crate::config::Config;

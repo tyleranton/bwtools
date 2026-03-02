@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use bw_web_api_rs::models::aurora_profile::{ScrMmGameLoading, ScrProfile, ScrToonInfo};
 use bw_web_api_rs::models::matchmaker_player_info::MatchmakerPlayerInfo;
 use bw_web_api_rs::{ApiClient, ApiConfig};

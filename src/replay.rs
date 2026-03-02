@@ -96,12 +96,12 @@ mod rating_retry {
 
 mod screp_watch {
     use super::{
-        classify_short_game_outcome, parse_screp_duration_seconds, parse_screp_overview,
-        system_time_secs, ReplayError, ScrepOverview,
+        ReplayError, ScrepOverview, classify_short_game_outcome, parse_screp_duration_seconds,
+        parse_screp_overview, system_time_secs,
     };
     use crate::app::{App, DodgeCandidate};
     use crate::config::Config;
-    use crate::history::{derive_wl_and_race, FileHistorySource, HistoryService, OpponentRecord};
+    use crate::history::{FileHistorySource, HistoryService, OpponentRecord, derive_wl_and_race};
     use crate::overlay::OverlayService;
     use crate::profile_history::{
         MatchOutcome, ProfileHistoryKey, ProfileHistoryService, StoredMatch,
@@ -350,13 +350,12 @@ mod screp_watch {
             }
         }
 
-        if refresh_rating_overlay {
-            OverlayService::write_rating(cfg, app)?;
-        }
-
-        if let Some(new_rating) = new_profile_rating {
-            app.self_profile.rating = new_rating;
-        }
+        apply_new_profile_rating_then_write_overlay(
+            app,
+            cfg,
+            new_profile_rating,
+            refresh_rating_overlay,
+        )?;
 
         if let Some(update) = rating_retry_update {
             match update {
@@ -409,6 +408,23 @@ mod screp_watch {
             service
                 .save(&app.opponent.history)
                 .map_err(ReplayError::History)?;
+        }
+
+        Ok(())
+    }
+
+    fn apply_new_profile_rating_then_write_overlay(
+        app: &mut App,
+        cfg: &Config,
+        new_profile_rating: Option<Option<u32>>,
+        refresh_rating_overlay: bool,
+    ) -> Result<(), ReplayError> {
+        if let Some(new_rating) = new_profile_rating {
+            app.self_profile.rating = new_rating;
+        }
+
+        if refresh_rating_overlay {
+            OverlayService::write_rating(cfg, app)?;
         }
 
         Ok(())
@@ -493,6 +509,47 @@ mod screp_watch {
         }
 
         None
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::apply_new_profile_rating_then_write_overlay;
+        use crate::app::App;
+        use crate::config::Config;
+        use std::fs;
+        use std::path::PathBuf;
+
+        fn unique_test_temp_dir(name: &str) -> PathBuf {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or_default();
+            std::env::temp_dir().join(format!("bwtools-{name}-{nanos}"))
+        }
+
+        #[test]
+        fn apply_new_profile_rating_writes_new_value_to_overlay() {
+            let dir = unique_test_temp_dir("rating-overlay");
+            fs::create_dir_all(&dir).expect("create temp dir");
+
+            let cfg = Config {
+                rating_output_enabled: true,
+                rating_output_path: dir.join("overlay").join("self_rating.txt"),
+                ..Default::default()
+            };
+
+            let mut app = App::default();
+            app.self_profile.rating = Some(1200);
+
+            apply_new_profile_rating_then_write_overlay(&mut app, &cfg, Some(Some(1300)), true)
+                .expect("update rating overlay");
+
+            let text = fs::read_to_string(&cfg.rating_output_path).expect("read rating overlay");
+            assert_eq!(text, "1300");
+            assert_ne!(text, "1200");
+
+            let _ = fs::remove_dir_all(&dir);
+        }
     }
 }
 

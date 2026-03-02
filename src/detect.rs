@@ -1,7 +1,7 @@
 use crate::app::App;
 use crate::cache::CacheReader;
 use crate::config::Config;
-use crate::history::{derive_wl_and_race, FileHistorySource, HistoryService, OpponentRecord};
+use crate::history::{FileHistorySource, HistoryService, OpponentRecord, derive_wl_and_race};
 use crate::overlay::{OverlayError, OverlayService};
 use thiserror::Error;
 

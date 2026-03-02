@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
 
 use crate::app::{App, View};
 use crate::cache::CacheReader;
@@ -271,11 +271,7 @@ fn load_known_players_from_cfg(cfg: &Config) -> HashMap<u32, String> {
         let alt = std::env::current_dir()
             .unwrap_or_else(|_| PathBuf::from("."))
             .join("player_list.json");
-        if alt.exists() {
-            Some(alt)
-        } else {
-            None
-        }
+        if alt.exists() { Some(alt) } else { None }
     };
 
     if let Some(path) = candidate {
